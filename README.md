@@ -9,26 +9,26 @@ Simple one-time-link service written in Rust
 ## Quick start
 
 ### Build and run the service:
-```bash
+```console
 $ cargo build --release
 ...
 $ ./target/release/onetimer
 ```
 
 ### Send your secret data:
-```bash
+```console
 $ curl -d 'my secret data' http://127.0.0.1:8080/add
 http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e
 ```
 
 ### Get secret data using one-time link:
-```bash
+```console
 $ curl http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e
 my secret data
 ```
 
 ### Try to get secret data one more time:
-```bash
+```console
 $ curl -v http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e
 *   Trying 127.0.0.1:8080...
 * TCP_NODELAY set
