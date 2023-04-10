@@ -1,7 +1,6 @@
 [database]
-# path = "Data Source=:memory:;Version=3;New=True;"
-# path = "db.sqlite"
-path = ":memory:"
+path = "db.sqlite"
+# path = ":memory:"
 
 [server]
 host = "127.0.0.1"
