@@ -5,6 +5,7 @@ Simple one-time-link service written in Rust
 * config: "0.13.3"
 * rand: "0.8.5"
 * sqlite: "0.30.4"
+* tiny_http = "0.12.0"
 
 ## Quick start
 
