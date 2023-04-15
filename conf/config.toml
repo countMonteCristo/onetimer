@@ -5,3 +5,4 @@ path = "db.sqlite"
 [server]
 host = "127.0.0.1"
 port = 8080
+address = "http://127.0.0.1:8080"

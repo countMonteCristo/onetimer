@@ -1,33 +1,41 @@
+use std::io;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 use rand::Rng;
+use tiny_http::{Request, Response};
 
-use crate::request::{Request, Response};
-use crate::db::{self, DB};
+use crate::db::{DB, SqliteDB};
+use crate::config::Settings;
 
-pub fn handle_method_add(r: &Request, db: Arc<db::SqliteDB>) -> Result<Response, &'static str> {
-    match create_url_for_msg(r, r.body.clone(), db) {
-        Ok(url) => {
-            Ok(Response {
-                content_length: url.len(),
-                http_version: r.http_version.clone(),
-                headers: HashMap::from([
-                    (String::from("Content-Type"), String::from("text/plain")),
-                    (String::from("Content-Length"), url.len().to_string()),
-                ]),
-                body: url,
-                status_code: 201,
-                status_msg: "Created",
-            })
-        }
-        Err(e) => {
-            Err(e)
-        }
-    }
+
+pub fn respond_server_error(r: Request) -> io::Result<()> {
+    r.respond(Response::from_string("").with_status_code(500))
 }
 
-fn create_url_for_msg(r: &Request, msg: Vec<u8>, db: Arc<db::SqliteDB>) -> Result<String, &'static str> {
+pub fn respond_not_found(r: Request) -> io::Result<()> {
+    r.respond(Response::from_string("").with_status_code(404))
+}
+
+
+pub fn handle_method_add(mut r: Request, db: Arc<SqliteDB>, cfg: Arc<Settings>) -> io::Result<()> {
+    let mut buf: Vec<u8> = Vec::new();
+    if let Err(e) = r.as_reader().read_to_end(&mut buf) {
+        eprintln!("[ERROR] [HANDLERS] Failed to read request data: {}", e);
+        return respond_server_error(r);
+    }
+    match create_url_for_msg(buf, db, cfg) {
+        Ok(url) => {
+            r.respond(Response::from_string(url))
+        }
+        Err(e) => {
+            eprintln!("[ERROR] [HANDLERS] Failed to create url for user request: {}", e);
+            respond_server_error(r)
+        }
+    }
+
+}
+
+fn create_url_for_msg(msg: Vec<u8>, db: Arc<SqliteDB>, cfg: Arc<Settings>) -> Result<String, &'static str> {
     let id = generate_msg_id();
 
     match db.insert(id.clone(), msg) {
@@ -38,16 +46,7 @@ fn create_url_for_msg(r: &Request, msg: Vec<u8>, db: Arc<db::SqliteDB>) -> Resul
         }
     }
 
-    let host_str = match r.headers.get(&String::from("Host")) {
-        Some(host) => {
-            host.to_string()
-        },
-        None => {
-            String::from("127.0.0.1:8080")
-        }
-    };
-
-    let url = format!("http://{}/get/{}", host_str, id);
+    let url = format!("{}/get/{}", cfg.server_address, id);
     return Ok(url);
 }
 
@@ -67,32 +66,18 @@ fn generate_msg_id() -> String {
 }
 
 
-pub fn handle_method_get(r: &Request, id: &str, db: Arc<db::SqliteDB>) -> Result<Response, &'static str> {
-    let mut resp = Response {
-        content_length: 0,
-        http_version: r.http_version.clone(),
-        headers: HashMap::new(),
-        body: String::new(),
-        status_code: 200,
-        status_msg: "OK",
-    };
-
-    resp.headers.insert(String::from("Content-Type"), String::from("text/plain"));
-    resp.headers.insert(String::from("Content-Length"), String::from("0"));
-
+pub fn handle_method_get(r: Request, db: Arc<SqliteDB>) -> io::Result<()>  {
+    let parts: Vec<&str> = r.url().split("/").collect();
+    let id = parts[2];
     match db.select(id.to_string()) {
         Ok(msg) => {
-            resp.content_length = msg.len();
-            resp.headers.insert(String::from("Content-Length"), resp.content_length.to_string());
-            resp.body.push_str(msg.as_str());
+            r.respond(Response::from_string(msg))
         }
         Err(e) => {
             if e != "not_found" {
                 println!("[ERROR] [MAIN] Error while doing select: {}", e);
             }
-            resp.status_code = 404;
-            resp.status_msg = "Not Found";
+            respond_not_found(r)
         }
-    };
-    Ok(resp)
+    }
 }
