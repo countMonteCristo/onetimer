@@ -1,11 +1,11 @@
 use sqlite;
 
 
-pub trait DB {
+pub trait DB: Sync + Send {
     fn insert(&self, id: String, msg: Vec<u8>) -> Result<bool, &'static str>;
     fn select(&self, id: String) -> Result<String, &'static str>;
     fn prepare(&self);
-    fn create(path: &str) -> Self;
+    fn create(path: &str) -> Self where Self: Sized;
 }
 
 pub struct SqliteDB {
@@ -18,7 +18,7 @@ impl DB for SqliteDB {
         let mut statement = match self.connection.prepare(query) {
             Ok(s) => s,
             Err(e) => {
-                println!("[ERROR] [SQLITE] Error while preparing select: {}", e);
+                eprintln!("[ERROR] [DB] Error while preparing select: {}", e);
                 return Err("sqlite error");
             }
         };
@@ -28,7 +28,7 @@ impl DB for SqliteDB {
             let msg = match statement.read::<String, _>("data") {
                 Ok(msg) => msg,
                 Err(e) => {
-                    println!("[ERROR] [SQLITE] Error while doing select: {}", e);
+                    eprintln!("[ERROR] [DB] Error while doing select: {}", e);
                     return Err("sqlite error");
                 }
             };
@@ -37,7 +37,7 @@ impl DB for SqliteDB {
             let mut del_statement = match self.connection.prepare(query) {
                 Ok(s) => s,
                 Err(e) => {
-                    println!("[ERROR] [SQLITE] Error while preparing delete: {}", e);
+                    eprintln!("[ERROR] [DB] Error while preparing delete: {}", e);
                     return Err("sqlite error");
                 }
             };
@@ -46,7 +46,7 @@ impl DB for SqliteDB {
             match del_statement.next() {
                 Ok(_) => {},
                 Err(e) => {
-                    println!("[ERROR] [SQLITE] Error while doing delete: {}", e);
+                    eprintln!("[ERROR] [DB] Error while doing delete: {}", e);
                     return Err("sqlite error");
                 }
             }
@@ -61,7 +61,7 @@ impl DB for SqliteDB {
         let mut statement = match self.connection.prepare(query) {
             Ok(s) => s,
             Err(e) => {
-                println!("[ERROR] [SQLITE] Error while creating insert statement: {}", e);
+                eprintln!("[ERROR] [DB] Error while creating insert statement: {}", e);
                 return Err("sqlite error");
             }
         };
@@ -70,7 +70,7 @@ impl DB for SqliteDB {
         match statement.next() {
             Ok(_) => {},
             Err(e) => {
-                println!("[ERROR] [SQLITE] Error while doing insert: {}", e);
+                eprintln!("[ERROR] [DB] Error while doing insert: {}", e);
                 return Err("sqlite error")
             }
         }

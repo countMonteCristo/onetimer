@@ -2,20 +2,17 @@ pub mod db;
 pub mod config;
 pub mod handlers;
 
-use std::io;
-use std::sync::Arc;
-use std::thread;
-use std::env;
+use std::{io, thread, env, sync::Arc};
 
 use tiny_http::{Request, Server, Method};
 
-use crate::db::DB;
+use crate::db::{DB, SqliteDB};
 use crate::config::Settings;
-use crate::handlers::{handle_method_get, respond_not_found, handle_method_add};
+use crate::handlers::{handle_method_get, handle_method_add, respond_not_implemented};
 
 
-fn handle_request(request: Request, db: Arc<db::SqliteDB>, cfg: Arc::<Settings>) -> io::Result<()> {
-    match (request.method(), request.url().clone()) {
+fn handle_request(request: Request, db: Arc<dyn DB>, cfg: Arc::<Settings>) -> io::Result<()> {
+    match (request.method(), request.url()) {
         (Method::Post, "/add") => {
             handle_method_add(request, db, cfg)
         }
@@ -23,7 +20,7 @@ fn handle_request(request: Request, db: Arc<db::SqliteDB>, cfg: Arc::<Settings>)
             handle_method_get(request, db)
         }
         (_, _) => {
-            respond_not_found(request)
+            respond_not_implemented(request)
         }
     }
 }
@@ -35,7 +32,7 @@ fn main() {
     let s = config::load(config_path);
     let addr = format!("{}:{}", s.server_host, s.server_port);
 
-    let database = db::SqliteDB::create(s.db_url.as_str());
+    let database = SqliteDB::create(s.db_url.as_str());
     database.prepare();
 
     let server = Server::http(&addr).map_err(|err| {
