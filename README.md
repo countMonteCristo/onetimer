@@ -3,9 +3,11 @@ Simple one-time-link service written in Rust
 
 ## Dependencies
 * config: "0.13.3"
+* log: "0.4.17"
 * rand: "0.8.5"
+* simplelog: "0.12.1"
 * sqlite: "0.30.4"
-* tiny_http = "0.12.0"
+* tiny_http: "0.12.0"
 
 ## Quick start
 
