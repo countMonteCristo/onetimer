@@ -1,6 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use crate::utils::generate_hex_id;
+use crate::utils::{generate_hex_id, time_us};
 
 
 pub struct Context {
@@ -11,15 +9,15 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Context {
-        return Context {
+        Context {
             qid: generate_hex_id(8),
-            start_time_us: SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_micros(),
+            start_time_us: time_us(),
             finish_time_us: 0
-        };
+        }
     }
 
     pub fn fix(&mut self) {
-        self.finish_time_us = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_micros();
+        self.finish_time_us = time_us();
     }
 
     pub fn time_ms(&self) -> f32 {
