@@ -1,92 +1,64 @@
 #[macro_use] extern crate log;
 
-pub mod db;
 pub mod config;
 pub mod context;
+pub mod db;
 pub mod handlers;
+pub mod logger;
 pub mod utils;
 
-use std::{io, thread, env, sync::Arc, fs::OpenOptions};
+use std::{io, env, thread};
+use std::sync::Arc;
 
-use log::LevelFilter;
-use tiny_http::{Request, Server, Method};
-use simplelog::{self, WriteLogger, TermLogger, TerminalMode, ColorChoice};
+use tiny_http::{Method, Request, Server};
 
 use crate::db::{DB, SqliteDB};
-use crate::config::Config;
-use crate::handlers::{handle_method_get, handle_method_add, respond, HTTP_501};
+use crate::handlers::{handle_method_add, handle_method_get, respond, HTTP_501};
 use crate::context::Context;
 
 
-fn handle_request(request: Request, db: Arc<dyn DB>, cfg: Arc::<Config>) -> io::Result<()> {
-    let mut ctx = Context::new();
-
-    let headers: String = request.headers().iter().map(|h| -> String {
+fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
+    let headers: String = r.headers().iter().map(|h| -> String {
         h.to_string()
     }).collect::<Vec<String>>().join("\\r\\n");
+    info!("New Request [qid={}]: method: {}; url: {}; headers='{}'", ctx.qid, r.method(), r.url(), headers);
 
-    info!("New Request [qid={}]: method: {}; url: {}; headers='{}'", ctx.qid, request.method(), request.url(), headers);
-    match (request.method(), request.url()) {
+    match (r.method(), r.url()) {
         (Method::Post, "/add") => {
-            handle_method_add(request, db, cfg, &mut ctx)
+            handle_method_add(r, &mut ctx)
         }
         (Method::Get, url) if url.starts_with("/get/") => {
-            handle_method_get(request, db, &mut ctx)
+            handle_method_get(r, &mut ctx)
         }
         (_, _) => {
-            respond(request, &mut ctx, HTTP_501, None)
+            respond(r, &mut ctx, HTTP_501, None)
         }
     }
 }
 
-fn init_term_logger(level: LevelFilter) {
-    TermLogger::init(
-        level, simplelog::Config::default(), TerminalMode::Stderr, ColorChoice::Auto
-    ).unwrap();
-}
-
-fn init_file_logger(level: LevelFilter, filename: &String) {
-    WriteLogger::init(
-        level, simplelog::Config::default(),
-        OpenOptions::new().write(true).create(true).append(true).open(filename).unwrap()
-    ).unwrap()
-}
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let cfg_path = env::args().nth(1).expect("Config file was not provided");
+    let cfg = config::load(&cfg_path);
+    logger::init_logger(&cfg);
 
-    let config_path = if args.len() > 1 {args[1].as_str()} else {"conf/config.toml"};
-    let config = config::load(config_path);
-    let addr = format!("{}:{}", config.server_host, config.server_port);
-
-    match config.log_type.as_str() {
-        "console" => init_term_logger(config.log_level),
-        "file"    => init_file_logger(config.log_level, &config.log_file),
-        _         => {
-            eprintln!(
-                "Unsupported log type: {}, only `file` and `console` are supported. Use `console` by default",
-                config.log_type
-            );
-            init_term_logger(config.log_level);
-        }
-    };
-
-    let database = SqliteDB::create(config.db_url.as_str());
+    let database = SqliteDB::create(cfg.db_url.as_str());
     database.prepare();
 
+    let addr = format!("{}:{}", cfg.server_host, cfg.server_port);
     let server = Server::http(&addr).map_err(|err| {
         error!("[MAIN] Could not start server at {}: {}", addr, err);
     }).unwrap();
     info!("[MAIN] Staring onetimer service at {}", addr);
-    info!("[MAIN] Config loaded from {}", config_path);
+    info!("[MAIN] Config loaded from {}", cfg_path);
 
-    let db = Arc::new(database);
-    let cfg = Arc::new(config);
-    for request in server.incoming_requests() {
-        let db_ = db.clone();
-        let cfg_ = cfg.clone();
+    let db_arc = Arc::new(database);
+    let cfg_arc = Arc::new(cfg);
+    for r in server.incoming_requests() {
+        let db_ = db_arc.clone();
+        let cfg_ = cfg_arc.clone();
         thread::spawn(move || {
-            handle_request(request, db_, cfg_).ok();
+            handle_request(r, Context::new(db_, cfg_)).ok();
         });
     };
 }

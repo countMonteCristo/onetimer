@@ -28,19 +28,19 @@ fn get_log_level(level_str: String) -> LevelFilter {
 }
 
 
-pub fn load(path: &str) -> Config {
-    let config = config::Config::builder()
+pub fn load(path: &String) -> Config {
+    let cfg = config::Config::builder()
         .add_source(config::File::with_name(path))
         .build()
         .unwrap();
 
     Config {
-        db_url: config.get::<String>("database.path").unwrap(),
-        server_host: config.get::<String>("server.host").unwrap(),
-        server_port: config.get::<u32>("server.port").unwrap(),
-        server_address: config.get::<String>("server.address").unwrap(),
-        log_type: config.get::<String>("log.type").unwrap(),
-        log_file: config.get::<String>("log.file").unwrap(),
-        log_level: get_log_level(config.get::<String>("log.level").unwrap()),
+        db_url: cfg.get::<String>("database.path").unwrap(),
+        server_host: cfg.get::<String>("server.host").unwrap(),
+        server_port: cfg.get::<u32>("server.port").unwrap(),
+        server_address: cfg.get::<String>("server.address").unwrap(),
+        log_type: cfg.get::<String>("log.type").unwrap(),
+        log_file: cfg.get::<String>("log.file").unwrap(),
+        log_level: get_log_level(cfg.get::<String>("log.level").unwrap()),
     }
 }

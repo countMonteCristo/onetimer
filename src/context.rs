@@ -1,18 +1,27 @@
 use crate::utils::{generate_hex_id, time_us};
+use crate::config::Config;
+use crate::db::DB;
+
+use std::sync::Arc;
+
 
 
 pub struct Context {
     pub qid: String,
     pub start_time_us: u128,
     pub finish_time_us: u128,
+    pub cfg: Arc<Config>,
+    pub db: Arc<dyn DB>
 }
 
 impl Context {
-    pub fn new() -> Context {
+    pub fn new(db: Arc<dyn DB>, cfg: Arc::<Config>) -> Context {
         Context {
             qid: generate_hex_id(8),
             start_time_us: time_us(),
-            finish_time_us: 0
+            finish_time_us: 0,
+            cfg,
+            db,
         }
     }
 
