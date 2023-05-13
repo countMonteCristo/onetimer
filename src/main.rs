@@ -1,5 +1,6 @@
 #[macro_use] extern crate log;
 
+pub mod api;
 pub mod config;
 pub mod context;
 pub mod db;
@@ -31,7 +32,8 @@ fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
             handle_method_get(r, &mut ctx)
         }
         (_, _) => {
-            respond(r, &mut ctx, HTTP_501, None)
+            ctx.resp.status = "Method is not implemented".to_string();
+            respond(r, &mut ctx, HTTP_501)
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::db::DB;
 
 use std::sync::Arc;
 
+use crate::api::{new_response, ApiResponse};
 
 
 pub struct Context {
@@ -11,7 +12,8 @@ pub struct Context {
     pub start_time_us: u128,
     pub finish_time_us: u128,
     pub cfg: Arc<Config>,
-    pub db: Arc<dyn DB>
+    pub db: Arc<dyn DB>,
+    pub resp: ApiResponse
 }
 
 impl Context {
@@ -22,6 +24,7 @@ impl Context {
             finish_time_us: 0,
             cfg,
             db,
+            resp: new_response(),
         }
     }
 

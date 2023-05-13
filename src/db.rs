@@ -2,7 +2,7 @@ use sqlite;
 
 
 pub trait DB: Sync + Send {
-    fn insert(&self, id: &String, msg: Vec<u8>) -> Result<bool, &'static str>;
+    fn insert(&self, id: &String, msg: String) -> Result<bool, &'static str>;
     fn select(&self, id: &String) -> Result<String, &'static str>;
     fn prepare(&self);
     fn create(path: &str) -> Self where Self: Sized;
@@ -56,7 +56,7 @@ impl DB for SqliteDB {
         Err("not_found")
     }
 
-    fn insert(&self, id: &String, msg: Vec<u8>) -> Result<bool, &'static str> {
+    fn insert(&self, id: &String, msg: String) -> Result<bool, &'static str> {
         let query = "INSERT INTO msg VALUES (?, ?)";
         let mut statement = match self.connection.prepare(query) {
             Ok(s) => s,
@@ -66,7 +66,7 @@ impl DB for SqliteDB {
             }
         };
         statement.bind((1, id.as_str())).unwrap();
-        statement.bind((2, String::from_utf8(msg).unwrap().as_str())).unwrap();
+        statement.bind((2, msg.as_str())).unwrap();
         match statement.next() {
             Ok(_) => {},
             Err(e) => {

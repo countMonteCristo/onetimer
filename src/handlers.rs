@@ -2,6 +2,7 @@ use std::io;
 
 use tiny_http::{Request, Response, StatusCode};
 
+use crate::api::parse_request;
 use crate::context::Context;
 use crate::utils::generate_hex_id;
 
@@ -15,21 +16,9 @@ pub const HTTP_500: u16 = 500;
 pub const HTTP_501: u16 = 501;
 
 
-pub fn respond(r: Request, ctx: &mut Context, code: u16, msg: Option<String>) -> io::Result<()> {
-    let status_code = StatusCode(code);
-    let msg = msg.unwrap_or("".to_string());
-
-    let data = if code == HTTP_200 {
-        msg
-    } else {
-        let mut x = format!("{}: {}", code, status_code.default_reason_phrase().to_string());
-        if msg.len() > 0 {
-            x = format!("{}\n\n{}", x, msg);
-        }
-        x
-    };
-    let response = Response::from_string(&data).with_status_code(status_code);
-
+pub fn respond(r: Request, ctx: &mut Context, code: u16) -> io::Result<()> {
+    let data = serde_json::to_string(&ctx.resp).unwrap();
+    let response = Response::from_string(&data).with_status_code(StatusCode(code));
     let result = r.respond(response);
 
     ctx.fix();
@@ -39,49 +28,59 @@ pub fn respond(r: Request, ctx: &mut Context, code: u16, msg: Option<String>) ->
 }
 
 pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
-    let mut buf: Vec<u8> = Vec::new();
-    if let Err(e) = r.as_reader().read_to_end(&mut buf) {
-        error!("[HANDLERS] Failed to read request data: {}", e);
-        return respond(r, ctx, HTTP_400, None);
+    let parsed = parse_request(&mut r);
+    if parsed.is_err() {
+        ctx.resp.status = "Failed to parse input request".to_string();
+        return respond(r, ctx, HTTP_400);
     }
-    let (code, msg) = match create_url_for_msg(buf, ctx) {
-        Ok(url) => (HTTP_200, Some(url)),
+    let json = parsed.unwrap();
+
+    let code = match create_url_for_msg(json.data, ctx) {
+        Ok(url) => {
+            ctx.resp.msg = url;
+            HTTP_200
+        },
         Err(e) => {
             error!("[HANDLERS] Failed to create url for user request: {}", e);
-            (HTTP_500, None)
+            ctx.resp.status = e.to_string();
+            HTTP_500
         }
     };
 
-    respond(r, ctx, code, msg)
+    respond(r, ctx, code)
 }
 
-fn create_url_for_msg(msg: Vec<u8>, ctx: &mut Context) -> Result<String, &'static str> {
+fn create_url_for_msg(msg: String, ctx: &mut Context) -> Result<String, &'static str> {
     let id = generate_hex_id(URL_ID_LENGTH);
 
     match ctx.db.insert(&id, msg) {
         Ok(_) => {},
         Err(e) => {
             error!("[HANDLERS] Server error: {}", e);
-            return Err("server error");
+            return Err("Server error");
         }
     }
     let url = format!("{}/get/{}", ctx.cfg.server_address, id);
-
     Ok(url)
 }
 
 pub fn handle_method_get(r: Request, ctx: &mut Context) -> io::Result<()>  {
     let parts: Vec<&str> = r.url().split("/").collect();
     let id = parts[2];
-    let (status_code, msg) = match ctx.db.select(&id.to_string()) {
-        Ok(message) => (HTTP_200, Some(message)),
+
+    let code = match ctx.db.select(&id.to_string()) {
+        Ok(message) => {
+            ctx.resp.msg = message;
+            HTTP_200
+        },
         Err(e) => {
             if e != "not_found" {
                 error!("[HANDLERS] Error while doing select: {}", e);
             }
-            (HTTP_404, None)
+            ctx.resp.status = "Link was not found or has been deleted".to_string();
+            HTTP_404
         }
     };
 
-    respond(r, ctx, status_code, msg)
+    respond(r, ctx, code)
 }
