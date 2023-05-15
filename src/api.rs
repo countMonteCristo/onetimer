@@ -3,7 +3,7 @@ use tiny_http::Request;
 use serde::{Deserialize, Serialize};
 
 
-use crate::utils::one;
+use crate::utils::{one, week_seconds};
 
 
 #[derive(Serialize, Deserialize)]
@@ -12,6 +12,9 @@ pub struct ApiAddRequest {
 
     #[serde(default = "one")]
     pub max_clicks: i64,
+
+    #[serde[default = "week_seconds"]]
+    pub lifetime: i64,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -23,7 +23,7 @@ pub fn respond(r: Request, ctx: &mut Context, code: u16) -> io::Result<()> {
     let result = r.respond(response);
 
     ctx.fix();
-    info!("Respond to [{}]: time: {}ms; status: {}; sent: {} bytes", ctx.qid, ctx.time_ms(), code, data.as_bytes().len());
+    info!("Respond to [qid={}]: time: {}ms; status: {}; sent: {} bytes", ctx.qid, ctx.time_ms(), code, data.as_bytes().len());
 
     result
 }

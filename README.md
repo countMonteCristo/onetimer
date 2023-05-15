@@ -29,14 +29,18 @@ $ ./target/release/onetimer ./conf/config.toml
 
 ### Send your secret data:
 ```console
-$ curl -d 'my secret data' http://127.0.0.1:8080/add
-http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e
+$ curl -d '{"data": "my secret data", "max_clicks": 3, "lifetime": 60}' http://127.0.0.1:8080/add
+{"msg":"http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e","status":"OK"}
 ```
+
+where
+* `max_clicks` - number of clicks allowed to get your secret data (by deafult is 1)
+* `lifetime` - maximum time in seconds your secret data will be availiable (has higher priority than `max_clicks`). By default is 1 day
 
 ### Get secret data using one-time link:
 ```console
 $ curl http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e
-my secret data
+{"msg":"my secret data","status":"OK"}
 ```
 
 ### Try to get secret data one more time:
@@ -57,7 +61,7 @@ $ curl -v http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790
 < Content-Length: 14
 <
 * Connection #0 to host 127.0.0.1 left intact
-404: Not Found
+{"msg":"","status":"Link was not found or has been deleted"}
 ```
 
 ### Config file format
@@ -82,6 +86,5 @@ level = "info"                      # logging level
 * log input requests to database
 * clear data instead if deleting records in db table
 * proper collisions handling
-* specify secret data lifetime as input parameter for /add
 * notify when someone follow one-time link (add `notify` input parameter for /add)
 * use some crate (`clap`?) for parsing command-line arguments
