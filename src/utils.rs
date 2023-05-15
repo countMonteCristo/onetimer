@@ -19,3 +19,5 @@ pub fn generate_hex_id(length: u32) -> String {
 pub fn time_us() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_micros()
 }
+
+pub fn one() -> i64 {1}

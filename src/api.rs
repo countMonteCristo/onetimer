@@ -3,9 +3,15 @@ use tiny_http::Request;
 use serde::{Deserialize, Serialize};
 
 
+use crate::utils::one;
+
+
 #[derive(Serialize, Deserialize)]
 pub struct ApiAddRequest {
     pub data: String,
+
+    #[serde(default = "one")]
+    pub max_clicks: i64,
 }
 
 #[derive(Serialize, Deserialize)]

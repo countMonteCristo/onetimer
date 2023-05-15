@@ -84,5 +84,4 @@ level = "info"                      # logging level
 * proper collisions handling
 * specify secret data lifetime as input parameter for /add
 * notify when someone follow one-time link (add `notify` input parameter for /add)
-* specify maximum number of clicks as input parameter for /add
 * use some crate (`clap`?) for parsing command-line arguments

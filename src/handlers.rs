@@ -2,9 +2,10 @@ use std::io;
 
 use tiny_http::{Request, Response, StatusCode};
 
-use crate::api::parse_request;
+use crate::api::{ApiAddRequest, parse_request};
 use crate::context::Context;
 use crate::utils::generate_hex_id;
+use crate::db::NOT_FOUND_ERROR;
 
 
 const URL_ID_LENGTH: u32 = 64;
@@ -35,7 +36,7 @@ pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
     }
     let json = parsed.unwrap();
 
-    let code = match create_url_for_msg(json.data, ctx) {
+    let code = match create_url_for_msg(&json, ctx) {
         Ok(url) => {
             ctx.resp.msg = url;
             HTTP_200
@@ -50,7 +51,7 @@ pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
     respond(r, ctx, code)
 }
 
-fn create_url_for_msg(msg: String, ctx: &mut Context) -> Result<String, &'static str> {
+fn create_url_for_msg(msg: &ApiAddRequest, ctx: &mut Context) -> Result<String, &'static str> {
     let id = generate_hex_id(URL_ID_LENGTH);
 
     match ctx.db.insert(&id, msg) {
@@ -74,7 +75,7 @@ pub fn handle_method_get(r: Request, ctx: &mut Context) -> io::Result<()>  {
             HTTP_200
         },
         Err(e) => {
-            if e != "not_found" {
+            if e != NOT_FOUND_ERROR {
                 error!("[HANDLERS] Error while doing select: {}", e);
             }
             ctx.resp.status = "Link was not found or has been deleted".to_string();
