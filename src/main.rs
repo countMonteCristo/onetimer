@@ -8,15 +8,24 @@ pub mod handlers;
 pub mod logger;
 pub mod utils;
 
-use std::{io, env, thread};
+use std::{io, thread};
 use std::sync::Arc;
 
+use clap::Parser;
 use tiny_http::{Method, Request, Server};
 
 use crate::db::{DB, SqliteDB};
 use crate::handlers::{handle_method_add, handle_method_get, respond, HTTP_501};
 use crate::context::Context;
 
+
+/// Simple service for generating one-time access link to your secret data
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about)]
+struct Args {
+    /// Path to the configurational file
+    config_fn: String,
+}
 
 fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
     let headers: String = r.headers().iter().map(|h| -> String {
@@ -40,8 +49,8 @@ fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
 
 
 fn main() {
-    let cfg_path = env::args().nth(1).expect("Config file was not provided");
-    let cfg = config::load(&cfg_path);
+    let args = Args::parse();
+    let cfg = config::load(&args.config_fn);
     logger::init_logger(&cfg);
 
     let database = SqliteDB::create(cfg.db_url.as_str());
@@ -52,7 +61,7 @@ fn main() {
         error!("[MAIN] Could not start server at {}: {}", addr, err);
     }).unwrap();
     info!("[MAIN] Staring onetimer service at {}", addr);
-    info!("[MAIN] Config loaded from {}", cfg_path);
+    info!("[MAIN] Config loaded from {}", args.config_fn);
 
     let db_arc = Arc::new(database);
     let cfg_arc = Arc::new(cfg);
@@ -64,3 +73,4 @@ fn main() {
         });
     };
 }
+

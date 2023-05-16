@@ -10,9 +10,12 @@ Suppose you've been hired a new employee and you need to grant him the access to
 `onetimer` itself is a simple HTTP web server with database. It accepts only two methods: **add** for adding new data and **get** for providing data to user. For now only SQLite database is supported.
 
 ## Dependencies
+* clap: "4.2.7"
 * config: "0.13.3"
 * log: "0.4.17"
 * rand: "0.8.5"
+* serde: "1.0.163"
+* serde_json: "1.0.96"
 * simplelog: "0.12.1"
 * sqlite: "0.30.4"
 * time: "0.3.21"
@@ -84,7 +87,6 @@ level = "info"                      # logging level
 ## TODO
 * add support for other databases (PostgreSQL, MySQL, etc)
 * log input requests to database
-* clear data instead if deleting records in db table
+* clear data instead of deleting records in db table
 * proper collisions handling
 * notify when someone follow one-time link (add `notify` input parameter for /add)
-* use some crate (`clap`?) for parsing command-line arguments
