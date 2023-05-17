@@ -3,3 +3,4 @@
 /doc
 *.log
 .vscode
+/tests/_UNIVERSE_

@@ -84,6 +84,27 @@ file = "onetimer.log"               # log file for "file" logging type
 level = "info"                      # logging level
 ```
 
+### Tests
+You can run all tests at once:
+```console
+$ ./tests/runtest.sh
+[T00.sh] Check lifetime [memory]:
+OK
+[T00.sh] Check lifetime [sqlite]:
+OK
+[T01.sh] Check max_clicks [memory]:
+OK
+[T01.sh] Check max_clicks [sqlite]:
+OK
+```
+or run single test:
+```console
+$ cd tests
+$ ./T01.sh sqlite
+[T01.sh] Check max_clicks [sqlite]:
+OK
+```
+
 ## TODO
 * add support for other databases (PostgreSQL, MySQL, etc)
 * log input requests to database
