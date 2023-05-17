@@ -14,7 +14,8 @@ use std::sync::{Arc, Mutex};
 use clap::Parser;
 use tiny_http::{Method, Request, Server};
 
-use crate::db::get_db;
+// use crate::db::get_db;
+use crate::db::DB;
 use crate::handlers::{handle_method_add, handle_method_get, respond, HTTP_501};
 use crate::context::Context;
 
@@ -53,7 +54,7 @@ fn main() {
     let cfg = config::load(&args.config_fn);
     logger::init_logger(&cfg);
 
-    let database = get_db(&cfg.db_type, &cfg.db_url);
+    let database = DB::new(&cfg.db_type, &cfg.db_url);
     if database.is_err() {
         error!(
             "[MAIN] Could not init database of type {} and path {}: {}",
@@ -63,12 +64,23 @@ fn main() {
     }
     let db = database.unwrap();
     info!("[MAIN] Use `{}` as database backend", db.get_type());
-    db.prepare();
+    let p = db.prepare();
+    if p.is_err() {
+        error!(
+            "[MAIN] Could not prepare database of type {} and path {}: {}",
+            cfg.db_type, cfg.db_url, p.as_ref().err().unwrap()
+        );
+        return;
+    }
 
     let addr = format!("{}:{}", cfg.server_host, cfg.server_port);
-    let server = Server::http(&addr).map_err(|err| {
-        error!("[MAIN] Could not start server at {}: {}", addr, err);
-    }).unwrap();
+    let server = match Server::http(&addr) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("[MAIN] Could not start server at {}: {}", addr, e);
+            return;
+        }
+    };
     info!("[MAIN] Staring onetimer service at {}", addr);
     info!("[MAIN] Config loaded from {}", args.config_fn);
 

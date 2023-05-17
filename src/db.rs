@@ -6,51 +6,190 @@ use crate::api::ApiAddRequest;
 use crate::utils::now;
 
 
+const DB_SQLITE: &str = "sqlite";
+const DB_MEMORY: &str = "memory";
+
 const PREPARE_DB_SQLITE_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks INT NOT NULL, created INT NOT NULL, lifetime INT NOT NULL);";
-const SELECT_BY_ID_SQLITE_QUERY: &str = "SELECT (strftime('%s', 'now')-created>=lifetime) as expired, * FROM msg WHERE id = :id LIMIT 1";
+const SELECT_BY_ID_SQLITE_QUERY: &str = "SELECT * FROM msg WHERE id = :id LIMIT 1";
 const DELETE_BY_ID_SQLITE_QUERY: &str = "DELETE FROM msg WHERE id = :id";
 const UPDATE_BY_ID_SQLITE_QUERY: &str = "UPDATE msg SET max_clicks = :max_clicks WHERE id = :id";
-const INSERT_SQLITE_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, created, lifetime) VALUES (:id, :data, :max_clicks, strftime('%s', 'now'), :lifetime)";
+const INSERT_SQLITE_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, created, lifetime) VALUES (:id, :data, :max_clicks, :created, :lifetime)";
 
 pub const SQLITE_ERROR: &str = "sqlite error";
-pub const NOT_FOUND_ERROR: &str = "not found";
+pub const SQLITE_CREATE_TABLE_ERROR: &str = "sqlite create table error";
 
-pub trait DB: Sync + Send {
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str>;
-    fn select(&mut self, id: &String) -> Result<String, &'static str>;
-    fn prepare(&self);
-    fn create(path: &String, typ: &String) -> Self where Self: Sized;
-    fn get_type(&self) -> &String;
+pub const NOT_FOUND_ERROR: &str = "not found";
+pub const UNKNOWN_DB_TYPE_ERROR: &str = "unknown db type";
+pub const ALREADY_EXISTS_ERROR: &str = "already exists";
+pub const DELETE_ERROR: &str = "delete error";
+
+
+pub trait DbEngine: Sync + Send {
+    /// Insert data from ApiAddRequest with given id to database
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str>;
+
+    /// Get record from database by id
+    fn get(&self, id: &String) -> Result<Record, &'static str>;
+
+    /// Delete record from database by id
+    fn delete(&mut self, id: &String)-> Result<(), &'static str>;
+
+    /// Update record in database
+    fn update(&mut self, r: Record)-> Result<(), &'static str>;
+
+    /// Create new instance of engine
+    fn new(path: &String) -> Self where Self: Sized;
+
+    /// Prepare engine (create tables if needed)
+    fn prepare(&self) -> Result<(), &'static str>;
 }
 
-pub fn get_db(typ: &String, path: &String) -> Result<Box<dyn DB>, &'static str> {
-    match typ.as_str() {
-        "sqlite" => Ok(Box::new(SqliteDB::create(path, typ))),
-        "memory" => Ok(Box::new(MemoryDB::create(path, typ))),
-        _ => Err("unknown db type")
+pub struct DB {
+    typ: String,
+    engine: Box<dyn DbEngine>,
+}
+
+impl DB {
+    pub fn new(typ: &String, path: &String) -> Result<DB, &'static str> {
+        match typ.as_str() {
+            DB_SQLITE => Ok(DB{typ: typ.clone(), engine: Box::new(SqliteEngine::new(path))}),
+            DB_MEMORY => Ok(DB{typ: typ.clone(), engine: Box::new(MemoryEngine::new(path))}),
+            _ => Err(UNKNOWN_DB_TYPE_ERROR)
+        }
+    }
+
+    pub fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+        self.engine.insert(id, msg)
+    }
+
+    pub fn select(&mut self, id: &String) -> Result<String, &'static str> {
+        let mut r = self.engine.get(id)?;
+        let expired = r.expired();
+        let data = r.data.clone();
+        if r.max_clicks == 1 || expired {
+            self.engine.delete(id)?;
+            if expired {
+                return Err(NOT_FOUND_ERROR);
+            }
+        } else {
+            r.max_clicks -= 1;
+            self.engine.update(r)?;
+        }
+        return Ok(data);
+    }
+
+    pub fn prepare(&self) -> Result<(), &'static str> {
+        self.engine.prepare()
+    }
+
+    pub fn get_type(&self) -> &String { &self.typ }
+}
+
+struct SqliteEngine {
+    connection: sqlite::ConnectionWithFullMutex,
+}
+
+struct MemoryEngine {
+    map: HashMap<String, Record>,
+}
+
+
+impl DbEngine for MemoryEngine {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+        let r = Record{
+            id: id.clone(),
+            data: msg.get_data().clone(),
+            max_clicks: msg.get_max_clicks(),
+            created: now(),
+            lifetime: msg.get_lifetime(),
+        };
+        match self.map.insert(id.clone(), r) {
+            None => Ok(()),
+            Some(_) => Err(ALREADY_EXISTS_ERROR)
+        }
+    }
+    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+        self.map.remove(id).map(|_| ()).ok_or(DELETE_ERROR)
+    }
+    fn get(&self, id: &String) -> Result<Record, &'static str> {
+        if !self.map.contains_key(id) {
+            return Err(NOT_FOUND_ERROR);
+        }
+        Ok(self.map.get(id).unwrap().clone())
+    }
+    fn update(&mut self, r: Record) -> Result<(), &'static str> {
+        let id = r.id.clone();
+        if !self.map.contains_key(&id) {
+            return Err(NOT_FOUND_ERROR);
+        }
+        self.map.entry(id).and_modify(|rec| rec.max_clicks = r.max_clicks );
+        Ok(())
+    }
+    fn new(_path: &String) -> MemoryEngine {
+        MemoryEngine { map: HashMap::new() }
+    }
+    fn prepare(&self) -> Result<(), &'static str> {
+        Ok(())
     }
 }
 
-#[derive(Debug)]
-struct Record {
-    // id: String,
-    data: String,
-    max_clicks: i64,
-    created: i64,
-    lifetime: i64,
+impl DbEngine for SqliteEngine {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+        let mut stmt = self.prepare_statement(INSERT_SQLITE_QUERY)?;
+        let max_clicks = msg.get_max_clicks();
+        let lifetime = msg.get_lifetime();
+
+        stmt.bind::<&[(_, Value)]>(&[
+            (":id", id.as_str().into()),
+            (":data", msg.get_data().as_str().into()),
+            (":max_clicks", max_clicks.into()),
+            (":created", now().into()),
+            (":lifetime", lifetime.into()),
+        ][..]).unwrap();
+
+        self.check_ok(&mut stmt)?;
+        Ok(())
+    }
+    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+        let mut del_stmt = self.prepare_statement(DELETE_BY_ID_SQLITE_QUERY).unwrap();
+        del_stmt.bind((":id", id.as_str())).unwrap();
+        self.check_ok(&mut del_stmt)
+    }
+    fn get(&self, id: &String) -> Result<Record, &'static str> {
+        let mut stmt = self.prepare_statement(SELECT_BY_ID_SQLITE_QUERY)?;
+        stmt.bind((":id", id.as_str())).unwrap();
+        while let Ok(sqlite::State::Row) = stmt.next() {
+            let rid = self.read_column::<String>(&stmt, "id")?;
+            let msg = self.read_column::<String>(&stmt, "data")?;
+            let max_clicks = self.read_column::<i64>(&stmt, "max_clicks")?;
+            let created = self.read_column::<i64>(&stmt, "created")?;
+            let lifetime = self.read_column::<i64>(&stmt, "lifetime")?;
+
+            return Ok(Record{
+                id: rid, data: msg, max_clicks, created, lifetime
+            });
+        }
+        Err(NOT_FOUND_ERROR)
+    }
+    fn update(&mut self, r: Record) -> Result<(), &'static str> {
+        let mut upd_stmt = self.prepare_statement(UPDATE_BY_ID_SQLITE_QUERY)?;
+        upd_stmt.bind::<&[(_, Value)]>(&[
+            (":max_clicks", r.max_clicks.into()),
+            (":id", r.id.as_str().into()),
+        ][..]).unwrap();
+        self.check_ok(&mut upd_stmt)
+    }
+    fn new(path: &String) -> SqliteEngine {
+        SqliteEngine { connection: sqlite::Connection::open_with_full_mutex(path.as_str()).unwrap() }
+    }
+    fn prepare(&self) -> Result<(), &'static str> {
+        self.connection.execute(PREPARE_DB_SQLITE_QUERY).map_err(
+            |_: sqlite::Error| SQLITE_CREATE_TABLE_ERROR
+        )
+    }
 }
 
-pub struct SqliteDB {
-    connection: sqlite::ConnectionWithFullMutex,
-    typ: String,
-}
-
-pub struct MemoryDB {
-    map: HashMap<String, Record>,
-    typ: String,
-}
-
-impl SqliteDB {
+impl SqliteEngine {
     fn prepare_statement(&self, query: &str) -> Result<Statement<'_>, &'static str> {
         self.connection.prepare(query).or_else(|e| -> Result<Statement<'_>, &'static str> {
             error!("[DB] Error while preparing query `{}`: {}", query, e);
@@ -73,115 +212,17 @@ impl SqliteDB {
     }
 }
 
-impl DB for SqliteDB {
-    fn select(&mut self, id: &String) -> Result<String, &'static str> {
-
-        let mut stmt = self.prepare_statement(SELECT_BY_ID_SQLITE_QUERY)?;
-        stmt.bind((":id", id.as_str())).unwrap();
-
-        while let Ok(sqlite::State::Row) = stmt.next() {
-            let msg = self.read_column::<String>(&stmt, "data")?;
-            let max_clicks = self.read_column::<i64>(&stmt, "max_clicks")?;
-            let expired = self.read_column::<i64>(&stmt, "expired")? == 1;
-
-            if max_clicks == 1 || expired {
-                let mut del_stmt = self.prepare_statement(DELETE_BY_ID_SQLITE_QUERY)?;
-                del_stmt.bind((":id", id.as_str())).unwrap();
-                self.check_ok(&mut del_stmt)?;
-                if expired {
-                    break;
-                }
-            } else {
-                let mut upd_stmt = self.prepare_statement(UPDATE_BY_ID_SQLITE_QUERY)?;
-                upd_stmt.bind::<&[(_, Value)]>(&[
-                    (":max_clicks", (max_clicks - 1).into()),
-                    (":id", id.as_str().into()),
-                ][..]).unwrap();
-                self.check_ok(&mut upd_stmt)?;
-            }
-
-            return Ok(msg);
-        }
-        Err(NOT_FOUND_ERROR)
-    }
-
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str> {
-        let mut stmt = self.prepare_statement(INSERT_SQLITE_QUERY)?;
-        let max_clicks = msg.get_max_clicks();
-        let lifetime = msg.get_lifetime();
-
-        stmt.bind::<&[(_, Value)]>(&[
-            (":id", id.as_str().into()),
-            (":data", msg.get_data().as_str().into()),
-            (":max_clicks", max_clicks.into()),
-            (":lifetime", lifetime.into()),
-        ][..]).unwrap();
-
-        self.check_ok(&mut stmt)?;
-        Ok(true)
-    }
-
-    fn prepare(&self) {
-        self.connection.execute(PREPARE_DB_SQLITE_QUERY).unwrap();
-    }
-
-    fn create(path: &String, typ: &String) -> SqliteDB {
-        SqliteDB{
-            connection: sqlite::Connection::open_with_full_mutex(path.as_str()).unwrap(),
-            typ: typ.clone(),
-        }
-    }
-
-    fn get_type(&self) -> &String {
-        &self.typ
-    }
+#[derive(Debug, Clone)]
+pub struct Record {
+    id: String,
+    data: String,
+    max_clicks: i64,
+    created: i64,
+    lifetime: i64,
 }
 
-
-impl DB for MemoryDB {
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str> {
-        let r = Record{
-            // id: id.clone(),
-            data: msg.get_data().clone(),
-            max_clicks: msg.get_max_clicks(),
-            created: now(),
-            lifetime: msg.get_lifetime(),
-        };
-        match self.map.insert(id.clone(), r) {
-            None => Ok(true),
-            Some(_) => Err("already exists!")
-        }
-    }
-    fn select(&mut self, id: &String) -> Result<String, &'static str> {
-        if !self.map.contains_key(id) {
-            return Err(NOT_FOUND_ERROR);
-        }
-
-        let expired: bool;
-        let max_clicks: i64;
-        let data: String;
-        {
-            let r = self.map.get_mut(id).expect("unreachable");
-            expired = now() - r.created >= r.lifetime;
-            max_clicks = r.max_clicks;
-            data = r.data.clone();
-        }
-
-        if max_clicks == 1 || expired {
-            self.map.remove(id);
-            if expired {
-                return Err(NOT_FOUND_ERROR);
-            }
-        } else {
-            self.map.entry(id.clone()).and_modify(|r| r.max_clicks -= 1 );
-        }
-        return Ok(data);
-    }
-    fn prepare(&self) {}
-    fn create(_path: &String, typ: &String) -> MemoryDB {
-        MemoryDB { map: HashMap::new(), typ: typ.clone() }
-    }
-    fn get_type(&self) -> &String {
-        &self.typ
+impl Record {
+    fn expired(&self) -> bool {
+        now() - self.created > self.lifetime
     }
 }

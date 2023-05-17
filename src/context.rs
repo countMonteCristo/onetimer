@@ -12,12 +12,12 @@ pub struct Context {
     pub start_time_us: u128,
     pub finish_time_us: u128,
     pub cfg: Arc<Config>,
-    pub db: Arc<Mutex<Box<dyn  DB>>>,
+    pub db: Arc<Mutex<DB>>,
     pub resp: ApiResponse
 }
 
 impl Context {
-    pub fn new(db: Arc<Mutex<Box<dyn DB>>>, cfg: Arc::<Config>) -> Context {
+    pub fn new(db: Arc<Mutex<DB>>, cfg: Arc::<Config>) -> Context {
         Context {
             qid: generate_hex_id(8),
             start_time_us: time_us(),
