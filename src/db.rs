@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use sqlite::{self, Statement, Value};
 
 use crate::api::ApiAddRequest;
-use crate::utils::{one, day_seconds};
+use crate::utils::now;
 
 
 const PREPARE_DB_SQLITE_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks INT NOT NULL, created INT NOT NULL, lifetime INT NOT NULL);";
@@ -14,14 +16,38 @@ pub const SQLITE_ERROR: &str = "sqlite error";
 pub const NOT_FOUND_ERROR: &str = "not found";
 
 pub trait DB: Sync + Send {
-    fn insert(&self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str>;
-    fn select(&self, id: &String) -> Result<String, &'static str>;
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str>;
+    fn select(&mut self, id: &String) -> Result<String, &'static str>;
     fn prepare(&self);
-    fn create(path: &str) -> Self where Self: Sized;
+    fn create(path: &String, typ: &String) -> Self where Self: Sized;
+    fn get_type(&self) -> &String;
+}
+
+pub fn get_db(typ: &String, path: &String) -> Result<Box<dyn DB>, &'static str> {
+    match typ.as_str() {
+        "sqlite" => Ok(Box::new(SqliteDB::create(path, typ))),
+        "memory" => Ok(Box::new(MemoryDB::create(path, typ))),
+        _ => Err("unknown db type")
+    }
+}
+
+#[derive(Debug)]
+struct Record {
+    // id: String,
+    data: String,
+    max_clicks: i64,
+    created: i64,
+    lifetime: i64,
 }
 
 pub struct SqliteDB {
     connection: sqlite::ConnectionWithFullMutex,
+    typ: String,
+}
+
+pub struct MemoryDB {
+    map: HashMap<String, Record>,
+    typ: String,
 }
 
 impl SqliteDB {
@@ -48,7 +74,7 @@ impl SqliteDB {
 }
 
 impl DB for SqliteDB {
-    fn select(&self, id: &String) -> Result<String, &'static str> {
+    fn select(&mut self, id: &String) -> Result<String, &'static str> {
 
         let mut stmt = self.prepare_statement(SELECT_BY_ID_SQLITE_QUERY)?;
         stmt.bind((":id", id.as_str())).unwrap();
@@ -79,14 +105,14 @@ impl DB for SqliteDB {
         Err(NOT_FOUND_ERROR)
     }
 
-    fn insert(&self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str> {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str> {
         let mut stmt = self.prepare_statement(INSERT_SQLITE_QUERY)?;
-        let max_clicks = if msg.max_clicks <= 0 {one()} else {msg.max_clicks};
-        let lifetime = if msg.lifetime <= 0 {day_seconds()} else {msg.lifetime};
+        let max_clicks = msg.get_max_clicks();
+        let lifetime = msg.get_lifetime();
 
         stmt.bind::<&[(_, Value)]>(&[
             (":id", id.as_str().into()),
-            (":data", msg.data.as_str().into()),
+            (":data", msg.get_data().as_str().into()),
             (":max_clicks", max_clicks.into()),
             (":lifetime", lifetime.into()),
         ][..]).unwrap();
@@ -99,9 +125,63 @@ impl DB for SqliteDB {
         self.connection.execute(PREPARE_DB_SQLITE_QUERY).unwrap();
     }
 
-    fn create(path: &str) -> SqliteDB {
+    fn create(path: &String, typ: &String) -> SqliteDB {
         SqliteDB{
-            connection: sqlite::Connection::open_with_full_mutex(path).unwrap(),
+            connection: sqlite::Connection::open_with_full_mutex(path.as_str()).unwrap(),
+            typ: typ.clone(),
         }
+    }
+
+    fn get_type(&self) -> &String {
+        &self.typ
+    }
+}
+
+
+impl DB for MemoryDB {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<bool, &'static str> {
+        let r = Record{
+            // id: id.clone(),
+            data: msg.get_data().clone(),
+            max_clicks: msg.get_max_clicks(),
+            created: now(),
+            lifetime: msg.get_lifetime(),
+        };
+        match self.map.insert(id.clone(), r) {
+            None => Ok(true),
+            Some(_) => Err("already exists!")
+        }
+    }
+    fn select(&mut self, id: &String) -> Result<String, &'static str> {
+        if !self.map.contains_key(id) {
+            return Err(NOT_FOUND_ERROR);
+        }
+
+        let expired: bool;
+        let max_clicks: i64;
+        let data: String;
+        {
+            let r = self.map.get_mut(id).expect("unreachable");
+            expired = now() - r.created >= r.lifetime;
+            max_clicks = r.max_clicks;
+            data = r.data.clone();
+        }
+
+        if max_clicks == 1 || expired {
+            self.map.remove(id);
+            if expired {
+                return Err(NOT_FOUND_ERROR);
+            }
+        } else {
+            self.map.entry(id.clone()).and_modify(|r| r.max_clicks -= 1 );
+        }
+        return Ok(data);
+    }
+    fn prepare(&self) {}
+    fn create(_path: &String, typ: &String) -> MemoryDB {
+        MemoryDB { map: HashMap::new(), typ: typ.clone() }
+    }
+    fn get_type(&self) -> &String {
+        &self.typ
     }
 }

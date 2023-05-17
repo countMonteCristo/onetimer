@@ -8,13 +8,19 @@ use crate::utils::{one, week_seconds};
 
 #[derive(Serialize, Deserialize)]
 pub struct ApiAddRequest {
-    pub data: String,
+    data: String,
 
     #[serde(default = "one")]
-    pub max_clicks: i64,
+    max_clicks: i64,
 
     #[serde[default = "week_seconds"]]
-    pub lifetime: i64,
+    lifetime: i64,
+}
+
+impl ApiAddRequest {
+    pub fn get_data(&self) -> &String { &self.data }
+    pub fn get_max_clicks(&self) -> i64 { if self.max_clicks <= 0 {one()} else {self.max_clicks} }
+    pub fn get_lifetime(&self) -> i64 { if self.lifetime <= 0 {week_seconds()} else {self.lifetime} }
 }
 
 #[derive(Serialize, Deserialize)]

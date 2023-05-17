@@ -3,6 +3,7 @@ use simplelog::LevelFilter;
 
 
 pub struct Config {
+    pub db_type: String,
     pub db_url: String,
     pub server_host: String,
     pub server_port: u32,
@@ -35,6 +36,7 @@ pub fn load(path: &String) -> Config {
         .unwrap();
 
     Config {
+        db_type: cfg.get::<String>("database.type").unwrap(),
         db_url: cfg.get::<String>("database.path").unwrap(),
         server_host: cfg.get::<String>("server.host").unwrap(),
         server_port: cfg.get::<u32>("server.port").unwrap(),

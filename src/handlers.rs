@@ -54,7 +54,7 @@ pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
 fn create_url_for_msg(msg: &ApiAddRequest, ctx: &mut Context) -> Result<String, &'static str> {
     let id = generate_hex_id(URL_ID_LENGTH);
 
-    match ctx.db.insert(&id, msg) {
+    match ctx.db.lock().unwrap().insert(&id, msg) {
         Ok(_) => {},
         Err(e) => {
             error!("[HANDLERS] Server error: {}", e);
@@ -69,7 +69,7 @@ pub fn handle_method_get(r: Request, ctx: &mut Context) -> io::Result<()>  {
     let parts: Vec<&str> = r.url().split("/").collect();
     let id = parts[2];
 
-    let code = match ctx.db.select(&id.to_string()) {
+    let code = match ctx.db.lock().unwrap().select(&id.to_string()) {
         Ok(message) => {
             ctx.resp.msg = message;
             HTTP_200

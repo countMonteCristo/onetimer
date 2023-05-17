@@ -2,7 +2,7 @@ use crate::utils::{generate_hex_id, time_us};
 use crate::config::Config;
 use crate::db::DB;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::api::{new_response, ApiResponse};
 
@@ -12,12 +12,12 @@ pub struct Context {
     pub start_time_us: u128,
     pub finish_time_us: u128,
     pub cfg: Arc<Config>,
-    pub db: Arc<dyn DB>,
+    pub db: Arc<Mutex<Box<dyn  DB>>>,
     pub resp: ApiResponse
 }
 
 impl Context {
-    pub fn new(db: Arc<dyn DB>, cfg: Arc::<Config>) -> Context {
+    pub fn new(db: Arc<Mutex<Box<dyn DB>>>, cfg: Arc::<Config>) -> Context {
         Context {
             qid: generate_hex_id(8),
             start_time_us: time_us(),
