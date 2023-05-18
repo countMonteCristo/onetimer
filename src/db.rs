@@ -147,17 +147,24 @@ impl DbEngine for SqliteEngine {
             (":lifetime", lifetime.into()),
         ][..]).unwrap();
 
-        self.check_ok(&mut stmt)?;
-        Ok(())
+        self.check_ok(&mut stmt)
     }
     fn delete(&mut self, id: &String) -> Result<(), &'static str> {
-        let mut del_stmt = self.prepare_statement(DELETE_BY_ID_SQLITE_QUERY).unwrap();
-        del_stmt.bind((":id", id.as_str())).unwrap();
+        let mut del_stmt = self.prepare_statement(DELETE_BY_ID_SQLITE_QUERY)?;
+
+        del_stmt.bind::<&[(_, Value)]>(&[
+            (":id", id.as_str().into())
+        ][..]).unwrap();
+
         self.check_ok(&mut del_stmt)
     }
     fn get(&self, id: &String) -> Result<Record, &'static str> {
         let mut stmt = self.prepare_statement(SELECT_BY_ID_SQLITE_QUERY)?;
-        stmt.bind((":id", id.as_str())).unwrap();
+
+        stmt.bind::<&[(_, Value)]>(&[
+            (":id", id.as_str().into())
+        ][..]).unwrap();
+
         while let Ok(sqlite::State::Row) = stmt.next() {
             let rid = self.read_column::<String>(&stmt, "id")?;
             let msg = self.read_column::<String>(&stmt, "data")?;
@@ -173,10 +180,12 @@ impl DbEngine for SqliteEngine {
     }
     fn update(&mut self, r: Record) -> Result<(), &'static str> {
         let mut upd_stmt = self.prepare_statement(UPDATE_BY_ID_SQLITE_QUERY)?;
+
         upd_stmt.bind::<&[(_, Value)]>(&[
             (":max_clicks", r.max_clicks.into()),
             (":id", r.id.as_str().into()),
         ][..]).unwrap();
+
         self.check_ok(&mut upd_stmt)
     }
     fn new(path: &String) -> SqliteEngine {
@@ -206,7 +215,7 @@ impl SqliteEngine {
 
     fn check_ok(&self, stmt: &mut Statement) -> Result<(), &'static str> {
         stmt.next().map(|_| ()).or_else(|e| -> Result<(), &'static str>{
-            error!("[DB] Error while doing delete: {}", e);
+            error!("[DB] Error while executing SQL: {}", e);
             Err(SQLITE_ERROR)
         })
     }
