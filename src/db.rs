@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 
-use sqlite::{self, Statement, Value};
+use serde::{Deserialize, Serialize};
+use sqlite::{Connection, ConnectionWithFullMutex, ReadableWithIndex, State, Statement, Value};
 
 use crate::api::ApiAddRequest;
 use crate::utils::now;
@@ -8,6 +10,7 @@ use crate::utils::now;
 
 const DB_SQLITE: &str = "sqlite";
 const DB_MEMORY: &str = "memory";
+const DB_FILE: &str = "file";
 
 const PREPARE_DB_SQLITE_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks INT NOT NULL, created INT NOT NULL, lifetime INT NOT NULL);";
 const SELECT_BY_ID_SQLITE_QUERY: &str = "SELECT * FROM msg WHERE id = :id LIMIT 1";
@@ -21,7 +24,12 @@ pub const SQLITE_CREATE_TABLE_ERROR: &str = "sqlite create table error";
 pub const NOT_FOUND_ERROR: &str = "not found";
 pub const UNKNOWN_DB_TYPE_ERROR: &str = "unknown db type";
 pub const ALREADY_EXISTS_ERROR: &str = "already exists";
+pub const DO_NOT_EXISTS_ERROR: &str = "do not exists";
 pub const DELETE_ERROR: &str = "delete error";
+
+pub const IO_WRITE_ERROR: &str = "write error";
+pub const IO_READ_ERROR: &str = "read error";
+pub const IO_CREATE_ERROR: &str = "create error";
 
 
 pub trait DbEngine: Sync + Send {
@@ -40,9 +48,15 @@ pub trait DbEngine: Sync + Send {
     /// Create new instance of engine
     fn new(path: &String) -> Self where Self: Sized;
 
+    /// Create new instance of engine in the heap
+    fn new_boxed(path: &String) -> Box<Self> where Self: Sized {
+        Box::new(Self::new(path))
+    }
+
     /// Prepare engine (create tables if needed)
     fn prepare(&self) -> Result<(), &'static str>;
 }
+
 
 pub struct DB {
     typ: String,
@@ -50,12 +64,17 @@ pub struct DB {
 }
 
 impl DB {
-    pub fn new(typ: &String, path: &String) -> Result<DB, &'static str> {
+    fn new_engine(typ: &String, path: &String) -> Result<Box<dyn DbEngine>, &'static str> {
         match typ.as_str() {
-            DB_SQLITE => Ok(DB{typ: typ.clone(), engine: Box::new(SqliteEngine::new(path))}),
-            DB_MEMORY => Ok(DB{typ: typ.clone(), engine: Box::new(MemoryEngine::new(path))}),
+            DB_SQLITE => Ok(SqliteEngine::new_boxed(path)),
+            DB_MEMORY => Ok(MemoryEngine::new_boxed(path)),
+            DB_FILE   => Ok(FileEngine::new_boxed(path)),
             _ => Err(UNKNOWN_DB_TYPE_ERROR)
         }
+    }
+
+    pub fn new(typ: &String, path: &String) -> Result<DB, &'static str> {
+        Ok(DB{typ: typ.clone(), engine: Self::new_engine(typ, path)?})
     }
 
     pub fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
@@ -85,25 +104,26 @@ impl DB {
     pub fn get_type(&self) -> &String { &self.typ }
 }
 
+
 struct SqliteEngine {
-    connection: sqlite::ConnectionWithFullMutex,
+    connection: ConnectionWithFullMutex,
 }
 
 struct MemoryEngine {
     map: HashMap<String, Record>,
 }
 
+struct FileEngine {
+    dir_path: String
+}
+
 
 impl DbEngine for MemoryEngine {
+    fn new(_path: &String) -> Self {
+        MemoryEngine { map: HashMap::new() }
+    }
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
-        let r = Record{
-            id: id.clone(),
-            data: msg.get_data().clone(),
-            max_clicks: msg.get_max_clicks(),
-            created: now(),
-            lifetime: msg.get_lifetime(),
-        };
-        match self.map.insert(id.clone(), r) {
+        match self.map.insert(id.clone(), Record::new(id, msg)) {
             None => Ok(()),
             Some(_) => Err(ALREADY_EXISTS_ERROR)
         }
@@ -125,26 +145,24 @@ impl DbEngine for MemoryEngine {
         self.map.entry(id).and_modify(|rec| rec.max_clicks = r.max_clicks );
         Ok(())
     }
-    fn new(_path: &String) -> MemoryEngine {
-        MemoryEngine { map: HashMap::new() }
-    }
     fn prepare(&self) -> Result<(), &'static str> {
         Ok(())
     }
 }
 
 impl DbEngine for SqliteEngine {
+    fn new(path: &String) -> Self {
+        SqliteEngine { connection: Connection::open_with_full_mutex(path.as_str()).unwrap() }
+    }
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
         let mut stmt = self.prepare_statement(INSERT_SQLITE_QUERY)?;
-        let max_clicks = msg.get_max_clicks();
-        let lifetime = msg.get_lifetime();
 
         stmt.bind::<&[(_, Value)]>(&[
             (":id", id.as_str().into()),
             (":data", msg.get_data().as_str().into()),
-            (":max_clicks", max_clicks.into()),
+            (":max_clicks", msg.get_max_clicks().into()),
             (":created", now().into()),
-            (":lifetime", lifetime.into()),
+            (":lifetime", msg.get_lifetime().into()),
         ][..]).unwrap();
 
         self.check_ok(&mut stmt)
@@ -165,7 +183,7 @@ impl DbEngine for SqliteEngine {
             (":id", id.as_str().into())
         ][..]).unwrap();
 
-        while let Ok(sqlite::State::Row) = stmt.next() {
+        while let Ok(State::Row) = stmt.next() {
             let rid = self.read_column::<String>(&stmt, "id")?;
             let msg = self.read_column::<String>(&stmt, "data")?;
             let max_clicks = self.read_column::<i64>(&stmt, "max_clicks")?;
@@ -188,15 +206,71 @@ impl DbEngine for SqliteEngine {
 
         self.check_ok(&mut upd_stmt)
     }
-    fn new(path: &String) -> SqliteEngine {
-        SqliteEngine { connection: sqlite::Connection::open_with_full_mutex(path.as_str()).unwrap() }
-    }
     fn prepare(&self) -> Result<(), &'static str> {
         self.connection.execute(PREPARE_DB_SQLITE_QUERY).map_err(
-            |_: sqlite::Error| SQLITE_CREATE_TABLE_ERROR
+            |_| SQLITE_CREATE_TABLE_ERROR
         )
     }
 }
+
+impl DbEngine for FileEngine {
+    fn new(path: &String) -> Self {
+        FileEngine { dir_path: path.clone() }
+    }
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+        let filepath = self.get_filepath(id);
+        if self.file_exists(&filepath) {
+            return Err(ALREADY_EXISTS_ERROR);
+        }
+
+        serde_json::to_writer(
+            OpenOptions::new().write(true).create(true).open(filepath).unwrap(),
+            &Record::new(id, msg)
+        ).map_err(|_| IO_WRITE_ERROR)
+    }
+    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+        let filepath = self.get_filepath(id);
+        if !self.file_exists(&filepath) {
+            return Err(DO_NOT_EXISTS_ERROR);
+        }
+
+        std::fs::remove_file(filepath).map_err(|_| DELETE_ERROR)
+    }
+    fn get(&self, id: &String) -> Result<Record, &'static str> {
+        let filepath = self.get_filepath(id);
+        if !self.file_exists(&filepath) {
+            return Err(NOT_FOUND_ERROR);
+        }
+
+        serde_json::from_reader::<_, Record>(
+            OpenOptions::new().read(true).open(filepath).unwrap()
+        ).map_err(|_| IO_READ_ERROR)
+    }
+    fn update(&mut self, r: Record)-> Result<(), &'static str> {
+        let filepath = self.get_filepath(&r.id);
+        if !self.file_exists(&filepath) {
+            return Err(NOT_FOUND_ERROR);
+        }
+
+        let mut record = serde_json::from_reader::<_, Record>(
+            OpenOptions::new().read(true).open(filepath.clone()).unwrap()
+        ).map_err(|_| IO_READ_ERROR)?;
+
+        record.max_clicks = r.max_clicks;
+
+        serde_json::to_writer(
+            OpenOptions::new().write(true).open(filepath.clone()).unwrap(),
+            &record
+        ).map_err(|_| IO_WRITE_ERROR)
+    }
+    fn prepare(&self) -> Result<(), &'static str> {
+        if !self.file_exists(&self.dir_path) {
+            std::fs::create_dir(self.dir_path.clone()).map_err(|_| IO_CREATE_ERROR)?;
+        }
+        Ok(())
+    }
+}
+
 
 impl SqliteEngine {
     fn prepare_statement(&self, query: &str) -> Result<Statement<'_>, &'static str> {
@@ -205,14 +279,12 @@ impl SqliteEngine {
             Err(SQLITE_ERROR)
         })
     }
-
-    fn read_column<T: sqlite::ReadableWithIndex>(&self, stmt: &Statement, column: &str) -> Result<T, &'static str> {
+    fn read_column<T: ReadableWithIndex>(&self, stmt: &Statement, column: &str) -> Result<T, &'static str> {
         stmt.read::<T, _>(column).or_else(|e| -> Result<T, &'static str>{
             error!("[DB] Error while getting value from column `{}`: {}", column, e);
             Err(SQLITE_ERROR)
         })
     }
-
     fn check_ok(&self, stmt: &mut Statement) -> Result<(), &'static str> {
         stmt.next().map(|_| ()).or_else(|e| -> Result<(), &'static str>{
             error!("[DB] Error while executing SQL: {}", e);
@@ -221,7 +293,17 @@ impl SqliteEngine {
     }
 }
 
-#[derive(Debug, Clone)]
+impl FileEngine {
+    fn get_filepath(&self, id: &String) -> String {
+        format!("{}/{}", self.dir_path, id)
+    }
+    fn file_exists(&self, filepath: &String) -> bool {
+        std::path::Path::new(filepath.as_str()).exists()
+    }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {
     id: String,
     data: String,
@@ -231,6 +313,15 @@ pub struct Record {
 }
 
 impl Record {
+    pub fn new(id: &String, msg: &ApiAddRequest) -> Self {
+        Record{
+            id: id.clone(),
+            data: msg.get_data().clone(),
+            max_clicks: msg.get_max_clicks(),
+            created: now(),
+            lifetime: msg.get_lifetime(),
+        }
+    }
     fn expired(&self) -> bool {
         now() - self.created > self.lifetime
     }

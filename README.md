@@ -7,11 +7,12 @@ The service is availiable to provide one-time access for any secret data. This c
 Suppose you've been hired a new employee and you need to grant him the access to your internal services, i.e. you have to give him his login and password. The way you could do it is to upload this data (login+password) to `onetimer` and send the link given to your employee. He can follow this link only once, so you can be sure that noone will get this sensitive information.
 
 ## Internal stucture
-`onetimer` itself is a simple HTTP web server with database. It accepts only two methods: **add** for adding new data and **get** for providing data to user.
+`onetimer` itself is a simple HTTP web server with database. It accepts only two methods: **/add** for adding new data and **/get** for providing data to user.
 
 Supported database engines:
-* `sqlite` - SQLite3 (stored in a local file)
+* `sqlite` - SQLite3 (database is stored in a local file)
 * `memory` - data is stored in service process memory (you better do not want to use this engine in production!)
+* `file` - data is stored in files into the directory, specified in `path` argument
 
 ## Dependencies
 * clap: "4.2.7"
@@ -77,8 +78,8 @@ $ curl -v http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790
 You can specify your own config file for `onetimer` service. Configurational files are written in TOML format. Here is an example ([config.toml](conf/config.toml)):
 ```toml
 [database]
-type = "memory"                     # engine type, supported engines are "memory" and "sqlite"
-path = "db.sqlite"                  # path to SQLite3 database file or ":memory:", only for `sqlite` engine
+type = "memory"                     # engine type, supported engines are "memory", "sqlite" and "file"
+path = "./db.sqlite"                # for SQLite3: path to db file or ":memory:"; for "file" type - path to directory where data files will be located
 
 [server]
 host = "127.0.0.1"                  # host for tiny-http to start the server
@@ -87,13 +88,14 @@ address = "http://127.0.0.1:8080"   # address being sent to user to one-time acc
 
 [log]
 type = "console"                    # logging type; supported types are "file" and "console"
-file = "onetimer.log"               # log file for "file" logging type
+file = "./onetimer.log"             # log file for "file" logging type
 level = "info"                      # logging level
 ```
 
 ### Tests
 You can run all tests at once:
 ```console
+$ cargo build --release
 $ ./tests/runtest.sh
 [T00.sh] Check lifetime [memory]:
 OK
@@ -106,6 +108,7 @@ OK
 ```
 or run single test:
 ```console
+$ cargo build --release
 $ cd tests
 $ ./T01.sh sqlite
 [T01.sh] Check max_clicks [sqlite]:

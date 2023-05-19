@@ -23,12 +23,9 @@ impl ApiAddRequest {
     pub fn get_lifetime(&self) -> i64 { if self.lifetime <= 0 {week_seconds()} else {self.lifetime} }
 
     pub fn parse_from(r: &mut Request) -> Result<ApiAddRequest, serde_json::Error> {
-        let mut content: String = String::new();
-        r.as_reader().read_to_string(&mut content).unwrap();
-        let res = serde_json::from_str(content.as_str());
-
+        let res = serde_json::from_reader(r.as_reader());
         if res.is_err() {
-            error!("[HANDLERS] Failed to parse request data from `{}`: {}", content, res.as_ref().err().unwrap());
+            error!("[HANDLERS] Failed to parse request data: {}", res.as_ref().err().unwrap());
         }
         res
     }
