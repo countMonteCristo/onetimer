@@ -2,9 +2,9 @@ use crate::utils::{generate_hex_id, time_us};
 use crate::config::Config;
 use crate::db::DB;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::api::{new_response, ApiResponse};
+use crate::api::ApiResponse;
 
 
 pub struct Context {
@@ -24,7 +24,7 @@ impl Context {
             finish_time_us: 0,
             cfg,
             db,
-            resp: new_response(),
+            resp: ApiResponse::new(),
         }
     }
 
@@ -34,5 +34,9 @@ impl Context {
 
     pub fn time_ms(&self) -> f32 {
         ((self.finish_time_us - self.start_time_us) as f32)/1000.0
+    }
+
+    pub fn db(&mut self) -> MutexGuard<DB> {
+        self.db.lock().unwrap()
     }
 }

@@ -47,8 +47,9 @@ where
 ### Get secret data using one-time link:
 ```console
 $ curl http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e
-{"msg":"my secret data","status":"OK"}
+{"msg":"my secret data","status":"OK","created":1684490894,"expired":1684490954}
 ```
+Here `expired` - `created` will be equal to input `lifetime` parameter, and `expired` - timestamp after which secret data will be deleted.
 
 ### Try to get secret data one more time:
 ```console

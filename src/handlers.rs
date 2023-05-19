@@ -2,7 +2,7 @@ use std::io;
 
 use tiny_http::{Request, Response, StatusCode};
 
-use crate::api::{ApiAddRequest, parse_request};
+use crate::api::ApiAddRequest;
 use crate::context::Context;
 use crate::utils::generate_hex_id;
 use crate::db::NOT_FOUND_ERROR;
@@ -29,32 +29,33 @@ pub fn respond(r: Request, ctx: &mut Context, code: u16) -> io::Result<()> {
 }
 
 pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
-    let parsed = parse_request(&mut r);
+    let parsed = ApiAddRequest::parse_from(&mut r);
+    let mut code = HTTP_400;
     if parsed.is_err() {
-        ctx.resp.status = "Failed to parse input request".to_string();
-        return respond(r, ctx, HTTP_400);
+        ctx.resp.set_status("Failed to parse input request".to_string());
+    } else {
+        let json = parsed.unwrap();
+        ctx.resp.set_expired(ctx.resp.created() + json.get_lifetime());
+
+        code = match create_url_for_msg(&json, ctx) {
+            Ok(url) => {
+                ctx.resp.set_message(url);
+                HTTP_200
+            },
+            Err(e) => {
+                error!("[HANDLERS] Failed to create url for user request: {}", e);
+                ctx.resp.set_status(e.to_string());
+                HTTP_500
+            }
+        };
     }
-    let json = parsed.unwrap();
-
-    let code = match create_url_for_msg(&json, ctx) {
-        Ok(url) => {
-            ctx.resp.msg = url;
-            HTTP_200
-        },
-        Err(e) => {
-            error!("[HANDLERS] Failed to create url for user request: {}", e);
-            ctx.resp.status = e.to_string();
-            HTTP_500
-        }
-    };
-
     respond(r, ctx, code)
 }
 
 fn create_url_for_msg(msg: &ApiAddRequest, ctx: &mut Context) -> Result<String, &'static str> {
     let id = generate_hex_id(URL_ID_LENGTH);
 
-    match ctx.db.lock().unwrap().insert(&id, msg) {
+    match ctx.db().insert(&id, msg) {
         Ok(_) => {},
         Err(e) => {
             error!("[HANDLERS] Server error: {}", e);
@@ -69,19 +70,23 @@ pub fn handle_method_get(r: Request, ctx: &mut Context) -> io::Result<()>  {
     let parts: Vec<&str> = r.url().split("/").collect();
     let id = parts[2];
 
-    let code = match ctx.db.lock().unwrap().select(&id.to_string()) {
+    let res = ctx.db().select(&id.to_string());
+    let code =  match res {
         Ok(message) => {
-            ctx.resp.msg = message;
+            ctx.resp.set_message(message);
             HTTP_200
         },
         Err(e) => {
             if e != NOT_FOUND_ERROR {
                 error!("[HANDLERS] Error while doing select: {}", e);
             }
-            ctx.resp.status = "Link was not found or has been deleted".to_string();
+            ctx.resp.set_status("Link was not found or has been deleted".to_string());
             HTTP_404
         }
     };
+
+    // Do not want to show sensitive fields in response
+    ctx.resp.hide_sensitive();
 
     respond(r, ctx, code)
 }

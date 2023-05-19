@@ -14,10 +14,10 @@ use std::sync::{Arc, Mutex};
 use clap::Parser;
 use tiny_http::{Method, Request, Server};
 
-// use crate::db::get_db;
 use crate::db::DB;
 use crate::handlers::{handle_method_add, handle_method_get, respond, HTTP_501};
 use crate::context::Context;
+use crate::config::Config;
 
 
 /// Simple service for generating one-time access link to your secret data
@@ -42,7 +42,7 @@ fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
             handle_method_get(r, &mut ctx)
         }
         (_, _) => {
-            ctx.resp.status = "Method is not implemented".to_string();
+            ctx.resp.set_status("Method is not implemented".to_string());
             respond(r, &mut ctx, HTTP_501)
         }
     }
@@ -51,7 +51,7 @@ fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
 
 fn main() {
     let args = Args::parse();
-    let cfg = config::load(&args.config_fn);
+    let cfg = Config::load(&args.config_fn);
     logger::init_logger(&cfg);
 
     let database = DB::new(&cfg.db_type, &cfg.db_url);

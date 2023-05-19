@@ -35,3 +35,7 @@ pub fn day_seconds() -> i64 {
 pub fn week_seconds() -> i64 {
     7 * day_seconds()
 }
+
+pub fn is_zero(x: &i64) -> bool {
+    *x == 0
+}
