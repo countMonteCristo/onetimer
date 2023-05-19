@@ -37,19 +37,20 @@ $ ./target/release/onetimer ./conf/config.toml
 ### Send your secret data:
 ```console
 $ curl -d '{"data": "my secret data", "max_clicks": 3, "lifetime": 60}' http://127.0.0.1:8080/add
-{"msg":"http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e","status":"OK"}
+{"msg":"http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e","status":"OK","created":1684490894,"expired":1684490954}
 ```
 
 where
 * `max_clicks` - number of clicks allowed to get your secret data (by deafult is 1)
 * `lifetime` - maximum time in seconds your secret data will be availiable (has higher priority than `max_clicks`). By default is 1 day
 
+Here `expired` - `created` will be equal to input `lifetime` parameter, and `expired` is the timestamp after which secret data will be deleted.
+
 ### Get secret data using one-time link:
 ```console
 $ curl http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790c4dbbb7331932719d93e
-{"msg":"my secret data","status":"OK","created":1684490894,"expired":1684490954}
+{"msg":"my secret data","status":"OK"}
 ```
-Here `expired` - `created` will be equal to input `lifetime` parameter, and `expired` - timestamp after which secret data will be deleted.
 
 ### Try to get secret data one more time:
 ```console
