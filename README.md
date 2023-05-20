@@ -20,9 +20,11 @@ Supported database engines:
 * log: "0.4.17"
 * rand: "0.8.5"
 * serde: "1.0.163"
+* serde_derive = "1.0.163"
 * serde_json: "1.0.96"
 * simplelog: "0.12.1"
 * sqlite: "0.30.4"
+* threadpool: "1.8.1"
 * time: "0.3.21"
 * tiny_http: "0.12.0"
 
@@ -78,16 +80,17 @@ $ curl -v http://127.0.0.1:8080/get/3cfd3cd9b4913bbc571435314a63d011d2a51a8c9790
 You can specify your own config file for `onetimer` service. Configurational files are written in TOML format. Here is an example ([config.toml](conf/config.toml)):
 ```toml
 [database]
-type = "memory"                     # engine type, supported engines are "memory", "sqlite" and "file"
-path = "./db.sqlite"                # for SQLite3: path to db file or ":memory:"; for "file" type - path to directory where data files will be located
+kind = "memory"                     # engine type, supported engines are "memory", "sqlite" and "file"
+url = "./db.sqlite"                # for SQLite3: path to db file or ":memory:"; for "file" type - path to directory where data files will be located
 
 [server]
 host = "127.0.0.1"                  # host for tiny-http to start the server
 port = 8080                         # port for tiny-http to start the server
+workers = 4                         # number of threads for threadpool
 address = "http://127.0.0.1:8080"   # address being sent to user to one-time access his secret data
 
 [log]
-type = "console"                    # logging type; supported types are "file" and "console"
+kind = "console"                    # logging type; supported types are "file" and "console"
 file = "./onetimer.log"             # log file for "file" logging type
 level = "info"                      # logging level
 ```

@@ -8,7 +8,7 @@ pub mod handlers;
 pub mod logger;
 pub mod utils;
 
-use std::{io, thread};
+use std::io;
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
@@ -54,11 +54,11 @@ fn main() {
     let cfg = Config::load(&args.config_fn);
     logger::init_logger(&cfg);
 
-    let database = DB::new(&cfg.db_type, &cfg.db_url);
+    let database = DB::new(&cfg.database.kind, &cfg.database.url);
     if database.is_err() {
         error!(
             "[MAIN] Could not init database of type {} and path {}: {}",
-            cfg.db_type, cfg.db_url, database.as_ref().err().unwrap()
+            cfg.database.kind, cfg.database.url, database.as_ref().err().unwrap()
         );
         return;
     }
@@ -68,12 +68,12 @@ fn main() {
     if p.is_err() {
         error!(
             "[MAIN] Could not prepare database of type {} and path {}: {}",
-            cfg.db_type, cfg.db_url, p.as_ref().err().unwrap()
+            cfg.database.kind, cfg.database.url, p.as_ref().err().unwrap()
         );
         return;
     }
 
-    let addr = format!("{}:{}", cfg.server_host, cfg.server_port);
+    let addr = format!("{}:{}", cfg.server.host, cfg.server.port);
     let server = match Server::http(&addr) {
         Ok(s) => s,
         Err(e) => {
@@ -84,14 +84,16 @@ fn main() {
     info!("[MAIN] Staring onetimer service at {}", addr);
     info!("[MAIN] Config loaded from {}", args.config_fn);
 
+    let pool = threadpool::ThreadPool::new(cfg.server.workers);
+
     let db_arc = Arc::new(Mutex::new(db));
     let cfg_arc = Arc::new(cfg);
     for r in server.incoming_requests() {
         let db_ = db_arc.clone();
         let cfg_ = cfg_arc.clone();
-        thread::spawn(move || {
+        pool.execute(move || {
             handle_request(r, Context::new(db_, cfg_)).ok();
-        });
+        })
     };
 }
 

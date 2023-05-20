@@ -1,49 +1,73 @@
 use config;
+use serde::{Deserializer, Deserialize};
 use simplelog::LevelFilter;
 
+#[derive(serde_derive::Deserialize)]
+pub struct Database {
+    pub kind: String,
+    pub url: String,
+}
 
+#[derive(serde_derive::Deserialize)]
+pub struct Server {
+    pub host: String,
+    pub port: u32,
+    pub workers: usize,
+    pub address: String,
+}
+
+#[derive(serde_derive::Deserialize)]
+pub struct Log {
+    pub kind: String,
+    #[serde(deserialize_with = "deserialize_log_level")]
+    pub level: LevelFilter,
+    pub file: String,
+}
+
+#[derive(serde_derive::Deserialize)]
 pub struct Config {
-    pub db_type: String,
-    pub db_url: String,
-    pub server_host: String,
-    pub server_port: u32,
-    pub server_address: String,
-    pub log_type: String,
-    pub log_file: String,
-    pub log_level: LevelFilter,
+    pub database: Database,
+    pub server: Server,
+    pub log: Log,
 }
 
 impl Config {
     pub fn load(path: &String) -> Self {
-        let cfg = config::Config::builder()
+        config::Config::builder()
             .add_source(config::File::with_name(path))
-            .build()
-            .unwrap();
-
-        Config {
-            db_type: cfg.get::<String>("database.type").unwrap(),
-            db_url: cfg.get::<String>("database.path").unwrap(),
-            server_host: cfg.get::<String>("server.host").unwrap(),
-            server_port: cfg.get::<u32>("server.port").unwrap(),
-            server_address: cfg.get::<String>("server.address").unwrap(),
-            log_type: cfg.get::<String>("log.type").unwrap(),
-            log_file: cfg.get::<String>("log.file").unwrap(),
-            log_level: Self::get_log_level(cfg.get::<String>("log.level").unwrap()),
-        }
+            .set_default("database.kind",   String::from("memory")                  ).unwrap()
+            .set_default("database.url",    String::from("db.sqlite")               ).unwrap()
+            .set_default("server.host",     String::from("127.0.0.1")               ).unwrap()
+            .set_default("server.port",     String::from("8080")                    ).unwrap()
+            .set_default("server.workers",  32                                      ).unwrap()
+            .set_default("server.address",  String::from("http://127.0.0.1:8080")   ).unwrap()
+            .set_default("log.kind",        String::from("console")                 ).unwrap()
+            .set_default("log.file",        String::from("onetimer.log")            ).unwrap()
+            .set_default("log.level",       String::from("info")                    ).unwrap()
+            .build().unwrap()
+            .try_deserialize().unwrap()
     }
 
-    fn get_log_level(level_str: String) -> LevelFilter {
+    fn get_log_level(level_str: String) -> Result<LevelFilter, &'static str> {
         match level_str.to_lowercase().as_str() {
-            "debug" => LevelFilter::Debug,
-            "error" => LevelFilter::Error,
-            "info"  => LevelFilter::Info,
-            "off"   => LevelFilter::Off,
-            "trace" => LevelFilter::Trace,
-            "warn"  => LevelFilter::Warn,
+            "debug" => Ok(LevelFilter::Debug),
+            "error" => Ok(LevelFilter::Error),
+            "info"  => Ok(LevelFilter::Info),
+            "off"   => Ok(LevelFilter::Off),
+            "trace" => Ok(LevelFilter::Trace),
+            "warn"  => Ok(LevelFilter::Warn),
             _       => {
-                eprintln!("Unknown log level: {}. Set to INFO", level_str);
-                LevelFilter::Info
+                eprintln!("Unknown log level: {}", level_str);
+                Err("unknown log level")
             }
         }
     }
 }
+
+fn deserialize_log_level<'de, D>(deserializer: D) -> Result<LevelFilter, D::Error>
+where D: Deserializer<'de> {
+    use serde::de::Error;
+    let buf = String::deserialize(deserializer)?;
+    Config::get_log_level(buf).map_err(|e| Error::custom(e))
+}
+

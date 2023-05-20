@@ -62,7 +62,7 @@ fn create_url_for_msg(msg: &ApiAddRequest, ctx: &mut Context) -> Result<String, 
             return Err("Server error");
         }
     }
-    let url = format!("{}/get/{}", ctx.cfg.server_address, id);
+    let url = format!("{}/get/{}", ctx.cfg.server.address, id);
     Ok(url)
 }
 

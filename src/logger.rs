@@ -6,15 +6,15 @@ use simplelog::{ColorChoice, LevelFilter, TerminalMode, TermLogger, WriteLogger}
 
 
 pub fn init_logger(cfg: &Config) {
-    match cfg.log_type.as_str() {
-        "console" => init_term_logger(cfg.log_level),
-        "file"    => init_file_logger(cfg.log_level, &cfg.log_file),
+    match cfg.log.kind.as_str() {
+        "console" => init_term_logger(cfg.log.level),
+        "file"    => init_file_logger(cfg.log.level, &cfg.log.file),
         _         => {
             eprintln!(
                 "Unsupported log type: {}, only `file` and `console` are supported. Use `console` by default",
-                cfg.log_type
+                cfg.log.kind
             );
-            init_term_logger(cfg.log_level);
+            init_term_logger(cfg.log.level);
         }
     };
 }

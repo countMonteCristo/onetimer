@@ -1,13 +1,14 @@
 [database]
-type = "memory" # sqlite, memory, file, etc
-path = "./db.sqlite"
+kind = "memory" # sqlite, memory, file, etc
+url = "./db.sqlite"
 
 [server]
 host = "127.0.0.1"
 port = 8080
+workers = 32
 address = "http://127.0.0.1:8080"
 
 [log]
-type = "console"   # `file` or `console`
+kind = "console"   # `file` or `console`
 file = "./onetimer.log"
 level = "info"
