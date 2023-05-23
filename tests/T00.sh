@@ -11,9 +11,9 @@ source "$tests_dir/utils.sh"
 
 # Prepare work dir for current test
 test_id=$(basename "$0")
-db_type=$1
+db_kind=$1
 
-config_fn="config_${db_type}.toml"
+config_fn="config_${db_kind}.toml"
 work_dir=$(prepare_env "$test_id" "$config_fn")
 cd "$work_dir"
 
@@ -23,7 +23,7 @@ pid=$!
 sleep 2
 trap 'kill $pid' EXIT
 
-echo "[$test_id] Check lifetime [$db_type]:"
+echo "[$test_id] Check lifetime [$db_kind]:"
 
 # Check lifetime
 add_resp=$(send_add "$PAYLOAD" "3" "3")

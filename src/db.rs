@@ -22,7 +22,7 @@ pub const SQLITE_ERROR: &str = "sqlite error";
 pub const SQLITE_CREATE_TABLE_ERROR: &str = "sqlite create table error";
 
 pub const NOT_FOUND_ERROR: &str = "not found";
-pub const UNKNOWN_DB_TYPE_ERROR: &str = "unknown db type";
+pub const UNKNOWN_DB_TYPE_ERROR: &str = "unknown db kind";
 pub const ALREADY_EXISTS_ERROR: &str = "already exists";
 pub const DO_NOT_EXISTS_ERROR: &str = "do not exists";
 pub const DELETE_ERROR: &str = "delete error";
@@ -59,13 +59,13 @@ pub trait DbEngine: Sync + Send {
 
 
 pub struct DB {
-    typ: String,
+    kind: String,
     engine: Box<dyn DbEngine>,
 }
 
 impl DB {
-    fn new_engine(typ: &String, path: &String) -> Result<Box<dyn DbEngine>, &'static str> {
-        match typ.as_str() {
+    fn new_engine(kind: &String, path: &String) -> Result<Box<dyn DbEngine>, &'static str> {
+        match kind.as_str() {
             DB_SQLITE => Ok(SqliteEngine::new_boxed(path)),
             DB_MEMORY => Ok(MemoryEngine::new_boxed(path)),
             DB_FILE   => Ok(FileEngine::new_boxed(path)),
@@ -74,7 +74,7 @@ impl DB {
     }
 
     pub fn new(typ: &String, path: &String) -> Result<DB, &'static str> {
-        Ok(DB{typ: typ.clone(), engine: Self::new_engine(typ, path)?})
+        Ok(DB{kind: typ.clone(), engine: Self::new_engine(typ, path)?})
     }
 
     pub fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
@@ -101,7 +101,7 @@ impl DB {
         self.engine.prepare()
     }
 
-    pub fn get_type(&self) -> &String { &self.typ }
+    pub fn get_kind(&self) -> &String { &self.kind }
 }
 
 

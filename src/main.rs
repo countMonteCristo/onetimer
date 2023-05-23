@@ -57,17 +57,17 @@ fn main() {
     let database = DB::new(&cfg.database.kind, &cfg.database.url);
     if database.is_err() {
         error!(
-            "[MAIN] Could not init database of type {} and path {}: {}",
+            "[MAIN] Could not init database of kind {} and path {}: {}",
             cfg.database.kind, cfg.database.url, database.as_ref().err().unwrap()
         );
         return;
     }
     let db = database.unwrap();
-    info!("[MAIN] Use `{}` as database backend", db.get_type());
+    info!("[MAIN] Use `{}` as database backend", db.get_kind());
     let p = db.prepare();
     if p.is_err() {
         error!(
-            "[MAIN] Could not prepare database of type {} and path {}: {}",
+            "[MAIN] Could not prepare database of kind {} and path {}: {}",
             cfg.database.kind, cfg.database.url, p.as_ref().err().unwrap()
         );
         return;

@@ -11,7 +11,7 @@ pub fn init_logger(cfg: &Config) {
         "file"    => init_file_logger(cfg.log.level, &cfg.log.file),
         _         => {
             eprintln!(
-                "Unsupported log type: {}, only `file` and `console` are supported. Use `console` by default",
+                "Unsupported log kind: {}, only `file` and `console` are supported. Use `console` by default",
                 cfg.log.kind
             );
             init_term_logger(cfg.log.level);
