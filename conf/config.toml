@@ -1,6 +1,6 @@
 [database]
-kind = "sqlite" # sqlite, memory, file, etc
-url = "Data Source = ./db.sqlite;"
+kind = "mysql" # sqlite, memory, file, mysql, etc
+url = "mysql://onetimer:12345678@localhost:3306/onetimer_db"
 
 [server]
 host = "127.0.0.1"

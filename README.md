@@ -11,22 +11,23 @@ Suppose you've been hired a new employee and you need to grant him the access to
 
 Supported database engines:
 * `sqlite` - SQLite3 (database is stored in a local file)
+* `mysql` - MySQL database
 * `memory` - data is stored in service process memory (you better do not want to use this engine in production!)
 * `file` - data is stored in files into the directory, specified in `path` argument
 
 ## Dependencies
-* clap: "4.2.7"
-* config: "0.13.3"
-* log: "0.4.17"
-* rand: "0.8.5"
-* serde: "1.0.163"
-* serde_derive = "1.0.163"
-* serde_json: "1.0.96"
-* simplelog: "0.12.1"
-* sqlite: "0.30.4"
-* threadpool: "1.8.1"
-* time: "0.3.21"
-* tiny_http: "0.12.0"
+* [clap](https://docs.rs/clap/latest/clap/)
+* [config](https://docs.rs/config/latest/config/)
+* [log](https://docs.rs/log/latest/log/)
+* [rand](https://docs.rs/config/latest/config/)
+* [serde](https://docs.rs/serde/latest/serde/)
+* [serde_derive](https://docs.rs/serde_derive/latest/serde_derive/)
+* [serde_json](https://docs.rs/serde_json/latest/serde_json/)
+* [simplelog](https://docs.rs/simplelog/latest/simplelog/)
+* [sqlite](https://docs.rs/sqlite/latest/sqlite/)
+* [threadpool](https://docs.rs/threadpool/latest/threadpool/)
+* [time](https://docs.rs/time/latest/time/)
+* [tiny_http](https://docs.rs/tiny_http/latest/tiny_http/)
 
 ## Quick start
 
@@ -81,7 +82,7 @@ You can specify your own config file for `onetimer` service. Configurational fil
 ```toml
 [database]
 kind = "memory"                     # engine type, supported engines are "memory", "sqlite" and "file"
-url = "./db.sqlite"                # for SQLite3: path to db file or ":memory:"; for "file" type - path to directory where data files will be located
+url = "./db.sqlite"                 # for SQLite3: path to db file or ":memory:"; for MySQL - connection string, for "file" type - path to directory where data files will be located
 
 [server]
 host = "127.0.0.1"                  # host for tiny-http to start the server
@@ -104,9 +105,17 @@ $ ./tests/runtest.sh
 OK
 [T00.sh] Check lifetime [sqlite]:
 OK
+[T00.sh] Check lifetime [file]:
+OK
+[T00.sh] Check lifetime [mysql]:
+OK
 [T01.sh] Check max_clicks [memory]:
 OK
 [T01.sh] Check max_clicks [sqlite]:
+OK
+[T01.sh] Check max_clicks [file]:
+OK
+[T01.sh] Check max_clicks [mysql]:
 OK
 ```
 or run single test:
@@ -116,10 +125,12 @@ $ cd tests
 $ ./T01.sh sqlite
 [T01.sh] Check max_clicks [sqlite]:
 OK
+
+Attention! For mysql tests to pass you need to setup MySQL database by hand.
 ```
 
 ## TODO
-* add support for other databases (PostgreSQL, MySQL, etc)
+* add support for other databases (PostgreSQL, etc)
 * log input requests to database
 * clear data instead of deleting records in db table
 * proper collisions handling

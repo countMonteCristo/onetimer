@@ -54,10 +54,10 @@ fn main() -> Result<(), &'static str> {
     let cfg = Config::load(&args.config_fn);
     logger::init_logger(&cfg)?;
 
-    let db = DB::new(&cfg.database.kind, &cfg.database.url).map_err(|e| {
+    let mut db = DB::new(&cfg.database.kind, &cfg.database.url).map_err(|e| {
         error!(
-            "[MAIN] Could not init database of kind {} and path {}: {}",
-            cfg.database.kind, cfg.database.url, e
+            "[MAIN] Could not init database of kind {}: {}",
+            cfg.database.kind, e
         );
         e
     })?;
@@ -65,8 +65,8 @@ fn main() -> Result<(), &'static str> {
 
     db.prepare().map_err(|e| {
         error!(
-            "[MAIN] Could not prepare database of kind {} and path {}: {}",
-            cfg.database.kind, cfg.database.url, e
+            "[MAIN] Could not prepare database of kind {}: {}",
+            cfg.database.kind, e
         );
         e
     })?;

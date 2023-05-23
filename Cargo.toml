@@ -9,6 +9,7 @@ edition = "2021"
 clap = { version = "4.2.7", features = ["derive"] }
 config = "0.13.3"
 log = "0.4.17"
+mysql = "24.0.0"
 rand = "0.8.5"
 serde = "1.0.163"
 serde_derive = "1.0.163"

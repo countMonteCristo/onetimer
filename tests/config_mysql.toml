@@ -1,0 +1,6 @@
+[database]
+kind = "mysql"
+url = "mysql://onetimer:12345678@localhost:3306/onetimer_db"
+
+[log]
+kind = "file"
