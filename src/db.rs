@@ -9,7 +9,10 @@ use mysql::{Pool, PooledConn, params};
 
 use crate::api::ApiAddRequest;
 use crate::utils::now;
+use crate::logger::get_reporter;
 
+
+const MODULE: &str = "DB";
 
 const DB_SQLITE: &str = "sqlite";
 const DB_MEMORY: &str = "memory";
@@ -24,16 +27,14 @@ const INSERT_SQL_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, created, 
 
 pub const SQLITE_ERROR: &str = "sqlite error";
 pub const MYSQL_ERROR: &str = "mysql error";
+pub const MEMORY_ERROR: &str = "memory error";
+pub const IO_ERROR: &str = "io error";
 
 pub const NOT_FOUND_ERROR: &str = "not found";
 pub const UNKNOWN_DB_TYPE_ERROR: &str = "unknown db kind";
 pub const ALREADY_EXISTS_ERROR: &str = "already exists";
 pub const DO_NOT_EXISTS_ERROR: &str = "do not exists";
 pub const DELETE_ERROR: &str = "delete error";
-
-pub const IO_WRITE_ERROR: &str = "write error";
-pub const IO_READ_ERROR: &str = "read error";
-pub const IO_CREATE_ERROR: &str = "create error";
 
 
 pub trait DbEngine: Sync + Send {
@@ -61,6 +62,9 @@ pub trait DbEngine: Sync + Send {
     fn prepare(&mut self) -> Result<(), &'static str>;
 }
 
+trait Reportable {
+    fn report(e: impl Display) -> &'static str;
+}
 
 pub struct DB {
     kind: String,
@@ -74,7 +78,10 @@ impl DB {
             DB_MEMORY => Ok(MemoryEngine::new_boxed(path)?),
             DB_FILE   => Ok(FileEngine::new_boxed(path)?),
             DB_MYSQL  => Ok(MysqlEngine::new_boxed(path)?),
-            _ => Err(UNKNOWN_DB_TYPE_ERROR)
+            _ => {
+                error!("[{}] Unknown database kind: {}", MODULE, kind);
+                Err(UNKNOWN_DB_TYPE_ERROR)
+            }
         }
     }
 
@@ -127,6 +134,28 @@ struct MysqlEngine {
 }
 
 
+impl Reportable for SqliteEngine {
+    fn report(e: impl Display) -> &'static str {
+        get_reporter(MODULE, "SQLite", SQLITE_ERROR)(e)
+    }
+}
+impl Reportable for MemoryEngine {
+    fn report(e: impl Display) -> &'static str {
+        get_reporter(MODULE, "Memory", MEMORY_ERROR)(e)
+    }
+}
+impl Reportable for FileEngine {
+    fn report(e: impl Display) -> &'static str {
+        get_reporter(MODULE, "IO", IO_ERROR)(e)
+    }
+}
+impl Reportable for MysqlEngine {
+    fn report(e: impl Display) -> &'static str {
+        get_reporter(MODULE, "MySQL", MYSQL_ERROR)(e)
+    }
+}
+
+
 impl DbEngine for MemoryEngine {
     fn new(_path: &String) -> Result<Self, &'static str> {
         Ok(MemoryEngine { map: HashMap::new() })
@@ -134,7 +163,10 @@ impl DbEngine for MemoryEngine {
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
         match self.map.insert(id.clone(), Record::new(id, msg)) {
             None => Ok(()),
-            Some(_) => Err(ALREADY_EXISTS_ERROR)
+            Some(_) => {
+                // TODO: add logging here
+                Err(ALREADY_EXISTS_ERROR)
+            }
         }
     }
     fn delete(&mut self, id: &String) -> Result<(), &'static str> {
@@ -157,12 +189,13 @@ impl DbEngine for MemoryEngine {
     fn prepare(&mut self) -> Result<(), &'static str> {
         Ok(())
     }
+
 }
 
 impl DbEngine for SqliteEngine {
     fn new(path: &String) -> Result<Self, &'static str> {
         Ok(SqliteEngine {
-            connection: Connection::open_with_full_mutex(path.as_str()).map_err(Self::report)?
+            connection: Connection::open_with_full_mutex(path.as_str()).map_err(Self::report)?,
         })
     }
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
@@ -229,6 +262,7 @@ impl DbEngine for FileEngine {
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
         let filepath = self.get_filepath(id);
         if self.file_exists(&filepath) {
+            // TODO: add logging here
             return Err(ALREADY_EXISTS_ERROR);
         }
 
@@ -240,6 +274,7 @@ impl DbEngine for FileEngine {
     fn delete(&mut self, id: &String) -> Result<(), &'static str> {
         let filepath = self.get_filepath(id);
         if !self.file_exists(&filepath) {
+            // TODO: add logging here
             return Err(DO_NOT_EXISTS_ERROR);
         }
 
@@ -348,10 +383,6 @@ impl SqliteEngine {
     fn check_ok(&self, stmt: &mut Statement) -> Result<(), &'static str> {
         stmt.next().map(|_| ()).map_err(Self::report)
     }
-    fn report(e: sqlite::Error) -> &'static str {
-        error!("[DB] SQLite error: {}", e);
-        SQLITE_ERROR
-    }
 }
 
 impl FileEngine {
@@ -361,25 +392,8 @@ impl FileEngine {
     fn file_exists(&self, filepath: &String) -> bool {
         std::path::Path::new(filepath.as_str()).exists()
     }
-    fn report<E: Display>(e: E) -> &'static str {
-        error!("[DB] IO error: {}", e);
-        SQLITE_ERROR
-    }
 }
 
-impl MysqlEngine {
-    fn report(e: mysql::Error) -> &'static str {
-        error!("[DB] MySql error: {}", e);
-        MYSQL_ERROR
-    }
-}
-
-impl MemoryEngine {
-    fn report<E: Display>(e: E) -> &'static str {
-        error!("[DB] Memory error: {}", e);
-        SQLITE_ERROR
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {

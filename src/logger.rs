@@ -19,6 +19,13 @@ pub fn init_logger(cfg: &Config) -> Result<(), &'static str> {
     }
 }
 
+pub fn get_reporter<E: std::fmt::Display>(module: &'static str, item: &'static str, msg: &'static str) -> impl Fn(E) -> &'static str {
+    move |e: E| {
+        error!("[{}] {} error: {}", module, item, e);
+        msg
+    }
+}
+
 
 fn prepare_logger_config() -> simplelog::Config {
     simplelog::ConfigBuilder::new().set_time_format_custom(

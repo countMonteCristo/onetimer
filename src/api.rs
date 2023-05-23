@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 
 use crate::utils::{one, week_seconds, now, is_zero};
+use crate::logger::get_reporter;
+
+
+const MODULE: &str = "API";
 
 
 #[derive(Deserialize)]
@@ -23,10 +27,9 @@ impl ApiAddRequest {
     pub fn get_lifetime(&self) -> u64 { if self.lifetime <= 0 {week_seconds()} else {self.lifetime} }
 
     pub fn parse_from(r: &mut Request) -> Result<ApiAddRequest, &'static str> {
-        serde_json::from_reader(r.as_reader()).map_err(|e| {
-            error!("[HANDLERS] Failed to parse request data: {}", e);
-            "parse error"
-        })
+        serde_json::from_reader(r.as_reader()).map_err(
+            get_reporter(MODULE, "ApiAddRequest::parse_from", "parse error")
+        )
     }
 }
 

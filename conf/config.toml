@@ -1,6 +1,8 @@
 [database]
-kind = "mysql" # sqlite, memory, file, mysql, etc
-url = "mysql://onetimer:12345678@localhost:3306/onetimer_db"
+kind = "memory" # sqlite, memory, file, mysql, etc
+# url = "mysql://onetimer:12345678@localhost:3306/onetimer_db"    # mysql
+# url = "./db"                                                    # file
+# url = "./db.sqlite"                                             # sqlite, also ":memory:" works
 
 [server]
 host = "127.0.0.1"

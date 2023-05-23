@@ -54,22 +54,12 @@ fn main() -> Result<(), &'static str> {
     let cfg = Config::load(&args.config_fn);
     logger::init_logger(&cfg)?;
 
-    let mut db = DB::new(&cfg.database.kind, &cfg.database.url).map_err(|e| {
-        error!(
-            "[MAIN] Could not init database of kind {}: {}",
-            cfg.database.kind, e
-        );
-        e
-    })?;
+    let reporter = logger::get_reporter("MAIN", "Main", "");
+
+    let mut db = DB::new(&cfg.database.kind, &cfg.database.url).map_err(&reporter)?;
     info!("[MAIN] Use `{}` as database backend", db.get_kind());
 
-    db.prepare().map_err(|e| {
-        error!(
-            "[MAIN] Could not prepare database of kind {}: {}",
-            cfg.database.kind, e
-        );
-        e
-    })?;
+    db.prepare().map_err(&reporter)?;
 
     let addr = format!("{}:{}", cfg.server.host, cfg.server.port);
     let server = Server::http(&addr).map_err(|e| {

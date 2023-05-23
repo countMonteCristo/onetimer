@@ -6,7 +6,10 @@ use crate::api::ApiAddRequest;
 use crate::context::Context;
 use crate::utils::generate_hex_id;
 use crate::db::NOT_FOUND_ERROR;
+use crate::logger::get_reporter;
 
+
+const MODULE: &str = "HANDLERS";
 
 const URL_ID_LENGTH: u32 = 64;
 
@@ -42,7 +45,7 @@ pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
                     HTTP_200
                 },
                 Err(e) => {
-                    error!("[HANDLERS] Failed to create url for user request: {}", e);
+                    error!("[{}] Failed to create url for user request: {}", MODULE, e);
                     ctx.resp.set_status(e.to_string());
                     HTTP_500
                 }
@@ -56,13 +59,10 @@ pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
 fn create_url_for_msg(msg: &ApiAddRequest, ctx: &mut Context) -> Result<String, &'static str> {
     let id = generate_hex_id(URL_ID_LENGTH);
 
-    match ctx.db().insert(&id, msg) {
-        Ok(_) => {},
-        Err(e) => {
-            error!("[HANDLERS] Server error: {}", e);
-            return Err("Server error");
-        }
-    }
+    ctx.db().insert(&id, msg).map_err(
+        get_reporter(MODULE, "Server", "erver error")
+    )?;
+
     let url = format!("{}/get/{}", ctx.cfg.server.address, id);
     Ok(url)
 }
@@ -79,7 +79,7 @@ pub fn handle_method_get(r: Request, ctx: &mut Context) -> io::Result<()>  {
         },
         Err(e) => {
             if e != NOT_FOUND_ERROR {
-                error!("[HANDLERS] Error while doing select: {}", e);
+                error!("[{}] Error while doing select: {}", MODULE, e);
             }
             ctx.resp.set_status("Link was not found or has been deleted".to_string());
             HTTP_404
