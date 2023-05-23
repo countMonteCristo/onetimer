@@ -49,38 +49,34 @@ fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
 }
 
 
-fn main() {
+fn main() -> Result<(), &'static str> {
     let args = Args::parse();
     let cfg = Config::load(&args.config_fn);
-    logger::init_logger(&cfg);
+    logger::init_logger(&cfg)?;
 
-    let database = DB::new(&cfg.database.kind, &cfg.database.url);
-    if database.is_err() {
+    let db = DB::new(&cfg.database.kind, &cfg.database.url).map_err(|e| {
         error!(
             "[MAIN] Could not init database of kind {} and path {}: {}",
-            cfg.database.kind, cfg.database.url, database.as_ref().err().unwrap()
+            cfg.database.kind, cfg.database.url, e
         );
-        return;
-    }
-    let db = database.unwrap();
+        e
+    })?;
     info!("[MAIN] Use `{}` as database backend", db.get_kind());
-    let p = db.prepare();
-    if p.is_err() {
+
+    db.prepare().map_err(|e| {
         error!(
             "[MAIN] Could not prepare database of kind {} and path {}: {}",
-            cfg.database.kind, cfg.database.url, p.as_ref().err().unwrap()
+            cfg.database.kind, cfg.database.url, e
         );
-        return;
-    }
+        e
+    })?;
 
     let addr = format!("{}:{}", cfg.server.host, cfg.server.port);
-    let server = match Server::http(&addr) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("[MAIN] Could not start server at {}: {}", addr, e);
-            return;
-        }
-    };
+    let server = Server::http(&addr).map_err(|e| {
+        error!("[MAIN] Could not start server at {}: {}", addr, e);
+        "init server error"
+    })?;
+
     info!("[MAIN] Staring onetimer service at {}", addr);
     info!("[MAIN] Config loaded from {}", args.config_fn);
 
@@ -95,5 +91,6 @@ fn main() {
             handle_request(r, Context::new(db_, cfg_)).ok();
         })
     };
+    Ok(())
 }
 

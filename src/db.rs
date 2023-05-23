@@ -20,6 +20,7 @@ const INSERT_SQLITE_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, create
 
 pub const SQLITE_ERROR: &str = "sqlite error";
 pub const SQLITE_CREATE_TABLE_ERROR: &str = "sqlite create table error";
+pub const BIND_ERROR: &str = "bind error";
 
 pub const NOT_FOUND_ERROR: &str = "not found";
 pub const UNKNOWN_DB_TYPE_ERROR: &str = "unknown db kind";
@@ -46,11 +47,11 @@ pub trait DbEngine: Sync + Send {
     fn update(&mut self, r: Record)-> Result<(), &'static str>;
 
     /// Create new instance of engine
-    fn new(path: &String) -> Self where Self: Sized;
+    fn new(path: &String) -> Result<Self, &'static str> where Self: Sized;
 
     /// Create new instance of engine in the heap
-    fn new_boxed(path: &String) -> Box<Self> where Self: Sized {
-        Box::new(Self::new(path))
+    fn new_boxed(path: &String) -> Result<Box<Self>, &'static str> where Self: Sized {
+        Self::new(path).map(|e| Box::new(e))
     }
 
     /// Prepare engine (create tables if needed)
@@ -66,9 +67,9 @@ pub struct DB {
 impl DB {
     fn new_engine(kind: &String, path: &String) -> Result<Box<dyn DbEngine>, &'static str> {
         match kind.as_str() {
-            DB_SQLITE => Ok(SqliteEngine::new_boxed(path)),
-            DB_MEMORY => Ok(MemoryEngine::new_boxed(path)),
-            DB_FILE   => Ok(FileEngine::new_boxed(path)),
+            DB_SQLITE => Ok(SqliteEngine::new_boxed(path)?),
+            DB_MEMORY => Ok(MemoryEngine::new_boxed(path)?),
+            DB_FILE   => Ok(FileEngine::new_boxed(path)?),
             _ => Err(UNKNOWN_DB_TYPE_ERROR)
         }
     }
@@ -119,8 +120,8 @@ struct FileEngine {
 
 
 impl DbEngine for MemoryEngine {
-    fn new(_path: &String) -> Self {
-        MemoryEngine { map: HashMap::new() }
+    fn new(_path: &String) -> Result<Self, &'static str> {
+        Ok(MemoryEngine { map: HashMap::new() })
     }
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
         match self.map.insert(id.clone(), Record::new(id, msg)) {
@@ -132,10 +133,10 @@ impl DbEngine for MemoryEngine {
         self.map.remove(id).map(|_| ()).ok_or(DELETE_ERROR)
     }
     fn get(&self, id: &String) -> Result<Record, &'static str> {
-        if !self.map.contains_key(id) {
-            return Err(NOT_FOUND_ERROR);
+        match self.map.get(id) {
+            Some(v) => Ok(v.clone()),
+            None => Err(NOT_FOUND_ERROR)
         }
-        Ok(self.map.get(id).unwrap().clone())
     }
     fn update(&mut self, r: Record) -> Result<(), &'static str> {
         let id = r.id.clone();
@@ -151,19 +152,28 @@ impl DbEngine for MemoryEngine {
 }
 
 impl DbEngine for SqliteEngine {
-    fn new(path: &String) -> Self {
-        SqliteEngine { connection: Connection::open_with_full_mutex(path.as_str()).unwrap() }
+    fn new(path: &String) -> Result<Self, &'static str> {
+        Ok(
+            SqliteEngine {
+                connection: Connection::open_with_full_mutex(
+                    path.as_str()
+                ).map_err(|e| {
+                    error!("[DB] Cannot connect to sql database: {}", e);
+                    "connection error"
+                })?
+            }
+        )
     }
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
         let mut stmt = self.prepare_statement(INSERT_SQLITE_QUERY)?;
 
         stmt.bind::<&[(_, Value)]>(&[
-            (":id", id.as_str().into()),
-            (":data", msg.get_data().as_str().into()),
+            (":id",         id.as_str().into()),
+            (":data",       msg.get_data().as_str().into()),
             (":max_clicks", msg.get_max_clicks().into()),
-            (":created", now().into()),
-            (":lifetime", msg.get_lifetime().into()),
-        ][..]).unwrap();
+            (":created",    now().into()),
+            (":lifetime",   msg.get_lifetime().into()),
+        ][..]).map_err(|_| BIND_ERROR )?;
 
         self.check_ok(&mut stmt)
     }
@@ -172,7 +182,7 @@ impl DbEngine for SqliteEngine {
 
         del_stmt.bind::<&[(_, Value)]>(&[
             (":id", id.as_str().into())
-        ][..]).unwrap();
+        ][..]).map_err(|_| BIND_ERROR )?;
 
         self.check_ok(&mut del_stmt)
     }
@@ -181,7 +191,7 @@ impl DbEngine for SqliteEngine {
 
         stmt.bind::<&[(_, Value)]>(&[
             (":id", id.as_str().into())
-        ][..]).unwrap();
+        ][..]).map_err(|_| BIND_ERROR )?;
 
         while let Ok(State::Row) = stmt.next() {
             let rid = self.read_column::<String>(&stmt, "id")?;
@@ -201,8 +211,8 @@ impl DbEngine for SqliteEngine {
 
         upd_stmt.bind::<&[(_, Value)]>(&[
             (":max_clicks", r.max_clicks.into()),
-            (":id", r.id.as_str().into()),
-        ][..]).unwrap();
+            (":id",         r.id.as_str().into()),
+        ][..]).map_err(|_| BIND_ERROR )?;
 
         self.check_ok(&mut upd_stmt)
     }
@@ -214,8 +224,8 @@ impl DbEngine for SqliteEngine {
 }
 
 impl DbEngine for FileEngine {
-    fn new(path: &String) -> Self {
-        FileEngine { dir_path: path.clone() }
+    fn new(path: &String) -> Result<Self, &'static str> {
+        Ok(FileEngine { dir_path: path.clone() })
     }
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
         let filepath = self.get_filepath(id);
@@ -224,7 +234,7 @@ impl DbEngine for FileEngine {
         }
 
         serde_json::to_writer(
-            OpenOptions::new().write(true).create(true).open(filepath).unwrap(),
+            OpenOptions::new().write(true).create(true).open(filepath).map_err(|_|"open file error")?,
             &Record::new(id, msg)
         ).map_err(|_| IO_WRITE_ERROR)
     }
@@ -243,7 +253,7 @@ impl DbEngine for FileEngine {
         }
 
         serde_json::from_reader::<_, Record>(
-            OpenOptions::new().read(true).open(filepath).unwrap()
+            OpenOptions::new().read(true).open(filepath).map_err(|_|"open file error")?
         ).map_err(|_| IO_READ_ERROR)
     }
     fn update(&mut self, r: Record)-> Result<(), &'static str> {
@@ -253,13 +263,13 @@ impl DbEngine for FileEngine {
         }
 
         let mut record = serde_json::from_reader::<_, Record>(
-            OpenOptions::new().read(true).open(filepath.clone()).unwrap()
+            OpenOptions::new().read(true).open(filepath.clone()).map_err(|_|"open file error")?
         ).map_err(|_| IO_READ_ERROR)?;
 
         record.max_clicks = r.max_clicks;
 
         serde_json::to_writer(
-            OpenOptions::new().write(true).open(filepath.clone()).unwrap(),
+            OpenOptions::new().write(true).open(filepath.clone()).map_err(|_|"open file error")?,
             &record
         ).map_err(|_| IO_WRITE_ERROR)
     }

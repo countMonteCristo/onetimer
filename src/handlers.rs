@@ -18,7 +18,7 @@ pub const HTTP_501: u16 = 501;
 
 
 pub fn respond(r: Request, ctx: &mut Context, code: u16) -> io::Result<()> {
-    let data = serde_json::to_string(&ctx.resp).unwrap();
+    let data = serde_json::to_string(&ctx.resp)?;
     let response = Response::from_string(&data).with_status_code(StatusCode(code));
     let result = r.respond(response);
 
@@ -31,23 +31,24 @@ pub fn respond(r: Request, ctx: &mut Context, code: u16) -> io::Result<()> {
 pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
     let parsed = ApiAddRequest::parse_from(&mut r);
     let mut code = HTTP_400;
-    if parsed.is_err() {
-        ctx.resp.set_status("Failed to parse input request".to_string());
-    } else {
-        let json = parsed.unwrap();
-        ctx.resp.set_expired(ctx.resp.created() + json.get_lifetime());
 
-        code = match create_url_for_msg(&json, ctx) {
-            Ok(url) => {
-                ctx.resp.set_message(url);
-                HTTP_200
-            },
-            Err(e) => {
-                error!("[HANDLERS] Failed to create url for user request: {}", e);
-                ctx.resp.set_status(e.to_string());
-                HTTP_500
-            }
-        };
+    match parsed {
+        Ok(json) => {
+            ctx.resp.set_expired(ctx.resp.created() + json.get_lifetime());
+
+            code = match create_url_for_msg(&json, ctx) {
+                Ok(url) => {
+                    ctx.resp.set_message(url);
+                    HTTP_200
+                },
+                Err(e) => {
+                    error!("[HANDLERS] Failed to create url for user request: {}", e);
+                    ctx.resp.set_status(e.to_string());
+                    HTTP_500
+                }
+            };
+        }
+        Err(_) => ctx.resp.set_status("Failed to parse input request".to_string()),
     }
     respond(r, ctx, code)
 }

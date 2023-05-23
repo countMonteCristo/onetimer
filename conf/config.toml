@@ -1,6 +1,6 @@
 [database]
-kind = "memory" # sqlite, memory, file, etc
-url = "./db.sqlite"
+kind = "sqlite" # sqlite, memory, file, etc
+url = "Data Source = ./db.sqlite;"
 
 [server]
 host = "127.0.0.1"

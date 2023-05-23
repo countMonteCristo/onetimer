@@ -22,12 +22,11 @@ impl ApiAddRequest {
     pub fn get_max_clicks(&self) -> i64 { if self.max_clicks <= 0 {one()} else {self.max_clicks} }
     pub fn get_lifetime(&self) -> i64 { if self.lifetime <= 0 {week_seconds()} else {self.lifetime} }
 
-    pub fn parse_from(r: &mut Request) -> Result<ApiAddRequest, serde_json::Error> {
-        let res = serde_json::from_reader(r.as_reader());
-        if res.is_err() {
-            error!("[HANDLERS] Failed to parse request data: {}", res.as_ref().err().unwrap());
-        }
-        res
+    pub fn parse_from(r: &mut Request) -> Result<ApiAddRequest, &'static str> {
+        serde_json::from_reader(r.as_reader()).map_err(|e| {
+            error!("[HANDLERS] Failed to parse request data: {}", e);
+            "parse error"
+        })
     }
 }
 

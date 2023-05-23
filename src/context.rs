@@ -13,7 +13,7 @@ pub struct Context {
     pub finish_time_us: u128,
     pub cfg: Arc<Config>,
     pub db: Arc<Mutex<DB>>,
-    pub resp: ApiResponse
+    pub resp: ApiResponse,
 }
 
 impl Context {
