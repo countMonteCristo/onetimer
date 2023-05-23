@@ -170,9 +170,9 @@ impl DbEngine for SqliteEngine {
         stmt.bind::<&[(_, Value)]>(&[
             (":id",         id.as_str().into()),
             (":data",       msg.get_data().as_str().into()),
-            (":max_clicks", msg.get_max_clicks().into()),
+            (":max_clicks", (msg.get_max_clicks() as i64).into()),
             (":created",    now().into()),
-            (":lifetime",   msg.get_lifetime().into()),
+            (":lifetime",   (msg.get_lifetime() as i64).into()),
         ][..]).map_err(|_| BIND_ERROR )?;
 
         self.check_ok(&mut stmt)
@@ -196,9 +196,9 @@ impl DbEngine for SqliteEngine {
         while let Ok(State::Row) = stmt.next() {
             let rid = self.read_column::<String>(&stmt, "id")?;
             let msg = self.read_column::<String>(&stmt, "data")?;
-            let max_clicks = self.read_column::<i64>(&stmt, "max_clicks")?;
+            let max_clicks = self.read_column::<i64>(&stmt, "max_clicks")? as u32;
             let created = self.read_column::<i64>(&stmt, "created")?;
-            let lifetime = self.read_column::<i64>(&stmt, "lifetime")?;
+            let lifetime = self.read_column::<i64>(&stmt, "lifetime")? as u64;
 
             return Ok(Record{
                 id: rid, data: msg, max_clicks, created, lifetime
@@ -210,7 +210,7 @@ impl DbEngine for SqliteEngine {
         let mut upd_stmt = self.prepare_statement(UPDATE_BY_ID_SQLITE_QUERY)?;
 
         upd_stmt.bind::<&[(_, Value)]>(&[
-            (":max_clicks", r.max_clicks.into()),
+            (":max_clicks", (r.max_clicks as i64).into()),
             (":id",         r.id.as_str().into()),
         ][..]).map_err(|_| BIND_ERROR )?;
 
@@ -317,9 +317,9 @@ impl FileEngine {
 pub struct Record {
     id: String,
     data: String,
-    max_clicks: i64,
+    max_clicks: u32,
     created: i64,
-    lifetime: i64,
+    lifetime: u64,
 }
 
 impl Record {
@@ -333,6 +333,6 @@ impl Record {
         }
     }
     fn expired(&self) -> bool {
-        now() - self.created > self.lifetime
+        now() - self.created > (self.lifetime as i64)
     }
 }

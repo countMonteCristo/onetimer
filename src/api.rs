@@ -6,21 +6,21 @@ use serde::{Deserialize, Serialize};
 use crate::utils::{one, week_seconds, now, is_zero};
 
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct ApiAddRequest {
     data: String,
 
     #[serde(default = "one")]
-    max_clicks: i64,
+    max_clicks: u32,
 
     #[serde[default = "week_seconds"]]
-    lifetime: i64,
+    lifetime: u64,
 }
 
 impl ApiAddRequest {
     pub fn get_data(&self) -> &String { &self.data }
-    pub fn get_max_clicks(&self) -> i64 { if self.max_clicks <= 0 {one()} else {self.max_clicks} }
-    pub fn get_lifetime(&self) -> i64 { if self.lifetime <= 0 {week_seconds()} else {self.lifetime} }
+    pub fn get_max_clicks(&self) -> u32 { if self.max_clicks <= 0 {one().into()} else {self.max_clicks} }
+    pub fn get_lifetime(&self) -> u64 { if self.lifetime <= 0 {week_seconds()} else {self.lifetime} }
 
     pub fn parse_from(r: &mut Request) -> Result<ApiAddRequest, &'static str> {
         serde_json::from_reader(r.as_reader()).map_err(|e| {
@@ -30,7 +30,7 @@ impl ApiAddRequest {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 pub struct ApiResponse {
     msg: String,
     status: String,

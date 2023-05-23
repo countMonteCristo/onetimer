@@ -28,11 +28,11 @@ pub fn now() -> i64 {
     current_duration().as_secs() as i64
 }
 
-pub fn one() -> i64 {1}
-pub fn day_seconds() -> i64 {
+pub fn one() -> u32 {1}
+pub fn day_seconds() -> u64 {
     24 * 60 * 60
 }
-pub fn week_seconds() -> i64 {
+pub fn week_seconds() -> u64 {
     7 * day_seconds()
 }
 

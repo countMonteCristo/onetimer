@@ -34,7 +34,7 @@ pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
 
     match parsed {
         Ok(json) => {
-            ctx.resp.set_expired(ctx.resp.created() + json.get_lifetime());
+            ctx.resp.set_expired(ctx.resp.created() + (json.get_lifetime() as i64));
 
             code = match create_url_for_msg(&json, ctx) {
                 Ok(url) => {
