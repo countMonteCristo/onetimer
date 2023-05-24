@@ -1,5 +1,5 @@
 [database]
-kind = "memory" # sqlite, memory, etc
+kind = "memory"
 
 [log]
 kind = "file"

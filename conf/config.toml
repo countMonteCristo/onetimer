@@ -1,8 +1,9 @@
 [database]
-kind = "memory" # sqlite, memory, file, mysql, etc
+kind = "postgresql" # sqlite, memory, file, mysql, etc
 # url = "mysql://onetimer:12345678@localhost:3306/onetimer_db"    # mysql
 # url = "./db"                                                    # file
 # url = "./db.sqlite"                                             # sqlite, also ":memory:" works
+url = "postgresql://onetimer:12345678@localhost:5432/onetimer_db"
 
 [server]
 host = "127.0.0.1"

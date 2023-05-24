@@ -12,6 +12,7 @@ Suppose you've been hired a new employee and you need to grant him the access to
 Supported database engines:
 * `sqlite` - SQLite3 (database is stored in a local file)
 * `mysql` - MySQL database
+* `postgresql` - PostgreSQL database
 * `memory` - data is stored in service process memory (you better do not want to use this engine in production!)
 * `file` - data is stored in files into the directory, specified in `path` argument
 
@@ -19,6 +20,10 @@ Supported database engines:
 * [clap](https://docs.rs/clap/latest/clap/)
 * [config](https://docs.rs/config/latest/config/)
 * [log](https://docs.rs/log/latest/log/)
+* [mysql](https://docs.rs/mysql/latest/mysql/)
+* [postgres](https://docs.rs/postgres/latest/postgres/)
+* [r2d2](https://docs.rs/r2d2/latest/r2d2/)
+* [r2d2_postgres](https://docs.rs/r2d2_postgres/latest/r2d2_postgres/)
 * [rand](https://docs.rs/config/latest/config/)
 * [serde](https://docs.rs/serde/latest/serde/)
 * [serde_derive](https://docs.rs/serde_derive/latest/serde_derive/)
@@ -82,7 +87,7 @@ You can specify your own config file for `onetimer` service. Configurational fil
 ```toml
 [database]
 kind = "memory"                     # engine type, supported engines are "memory", "sqlite" and "file"
-url = "./db.sqlite"                 # for SQLite3: path to db file or ":memory:"; for MySQL - connection string, for "file" type - path to directory where data files will be located
+url = "./db.sqlite"                 # for SQLite3: path to db file or ":memory:"; for MySQL and PostgreSQL - connection string, for "file" type - path to directory where data files will be located
 
 [server]
 host = "127.0.0.1"                  # host for tiny-http to start the server
@@ -109,6 +114,8 @@ OK
 OK
 [T00.sh] Check lifetime [mysql]:
 OK
+[T00.sh] Check lifetime [postgresql]:
+OK
 [T01.sh] Check max_clicks [memory]:
 OK
 [T01.sh] Check max_clicks [sqlite]:
@@ -116,6 +123,8 @@ OK
 [T01.sh] Check max_clicks [file]:
 OK
 [T01.sh] Check max_clicks [mysql]:
+OK
+[T01.sh] Check max_clicks [postgresql]:
 OK
 ```
 or run single test:
@@ -126,11 +135,12 @@ $ ./T01.sh sqlite
 [T01.sh] Check max_clicks [sqlite]:
 OK
 
-Attention! For mysql tests to pass you need to setup MySQL database by hand.
+Attention! For `mysql` and `postgresql` tests to pass you need to setup these databases by hand.
 ```
 
 ## TODO
-* add support for other databases (PostgreSQL, etc)
+* add support for other databases
+* prepare databases before tests
 * log input requests to database
 * clear data instead of deleting records in db table
 * proper collisions handling

@@ -1,0 +1,6 @@
+[database]
+kind = "postgresql"
+url = "postgresql://onetimer:12345678@localhost:5432/onetimer_db"
+
+[log]
+kind = "file"

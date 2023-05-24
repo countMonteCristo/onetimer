@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs::OpenOptions;
 
-use mysql::prelude::Queryable;
+use r2d2_postgres::{postgres::NoTls, PostgresConnectionManager};
 use serde::{Deserialize, Serialize};
-use sqlite::{Connection, ConnectionWithFullMutex, ReadableWithIndex, State, Statement, Value};
-use mysql::{Pool, PooledConn, params};
+use sqlite::{ReadableWithIndex, State, Statement, Value};
+use mysql::{params, prelude::Queryable};
 
 use crate::api::ApiAddRequest;
 use crate::utils::now;
@@ -18,6 +18,7 @@ const DB_SQLITE: &str = "sqlite";
 const DB_MEMORY: &str = "memory";
 const DB_FILE: &str = "file";
 const DB_MYSQL: &str = "mysql";
+const DB_PGSQL: &str = "postgresql";
 
 const PREPARE_DB_SQL_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks INT NOT NULL, created INT NOT NULL, lifetime INT NOT NULL);";
 const SELECT_BY_ID_SQL_QUERY: &str = "SELECT * FROM msg WHERE id = :id LIMIT 1";
@@ -25,10 +26,17 @@ const DELETE_BY_ID_SQL_QUERY: &str = "DELETE FROM msg WHERE id = :id";
 const UPDATE_BY_ID_SQL_QUERY: &str = "UPDATE msg SET max_clicks = :max_clicks WHERE id = :id";
 const INSERT_SQL_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, created, lifetime) VALUES (:id, :data, :max_clicks, :created, :lifetime)";
 
+const PREPARE_DB_PGSQL_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks BIGINT NOT NULL, created BIGINT NOT NULL, lifetime BIGINT NOT NULL);";
+const DELETE_BY_ID_PGSQL_QUERY: &str = "DELETE FROM msg WHERE id = $1";
+const INSERT_PGSQL_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, created, lifetime) VALUES ($1, $2, $3, $4, $5)";
+const SELECT_BY_ID_PGSQL_QUERY: &str = "SELECT * FROM msg WHERE id = $1 LIMIT 1";
+const UPDATE_BY_ID_PGSQL_QUERY: &str = "UPDATE msg SET max_clicks = $1 WHERE id = $2";
+
 pub const SQLITE_ERROR: &str = "sqlite error";
 pub const MYSQL_ERROR: &str = "mysql error";
 pub const MEMORY_ERROR: &str = "memory error";
 pub const IO_ERROR: &str = "io error";
+pub const PGSQL_ERROR: &str = "pgsql error";
 
 pub const NOT_FOUND_ERROR: &str = "not found";
 pub const UNKNOWN_DB_TYPE_ERROR: &str = "unknown db kind";
@@ -78,6 +86,7 @@ impl DB {
             DB_MEMORY => Ok(MemoryEngine::new_boxed(path)?),
             DB_FILE   => Ok(FileEngine::new_boxed(path)?),
             DB_MYSQL  => Ok(MysqlEngine::new_boxed(path)?),
+            DB_PGSQL  => Ok(PostgresqlEngine::new_boxed(path)?),
             _ => {
                 error!("[{}] Unknown database kind: {}", MODULE, kind);
                 Err(UNKNOWN_DB_TYPE_ERROR)
@@ -110,7 +119,13 @@ impl DB {
     }
 
     pub fn prepare(&mut self) -> Result<(), &'static str> {
-        self.engine.prepare()
+        let connected = self.engine.prepare();
+        if connected.is_ok() {
+            info!("[{}] Connected successfully to {}", MODULE, self.kind);
+        } else {
+            error!("[{}] Connection to {} failed", MODULE, self.kind);
+        }
+        connected
     }
 
     pub fn get_kind(&self) -> &String { &self.kind }
@@ -118,19 +133,19 @@ impl DB {
 
 
 struct SqliteEngine {
-    connection: ConnectionWithFullMutex,
+    connection: sqlite::ConnectionWithFullMutex,
 }
-
 struct MemoryEngine {
     map: HashMap<String, Record>,
 }
-
 struct FileEngine {
     dir_path: String,
 }
-
 struct MysqlEngine {
-    connection: PooledConn,
+    connection: mysql::PooledConn,
+}
+struct PostgresqlEngine {
+    pool: r2d2::Pool<PostgresConnectionManager<NoTls>>,
 }
 
 
@@ -152,6 +167,11 @@ impl Reportable for FileEngine {
 impl Reportable for MysqlEngine {
     fn report(e: impl Display) -> &'static str {
         get_reporter(MODULE, "MySQL", MYSQL_ERROR)(e)
+    }
+}
+impl Reportable for PostgresqlEngine {
+    fn report(e: impl Display) -> &'static str {
+        get_reporter(MODULE, "PostgreSQL", PGSQL_ERROR)(e)
     }
 }
 
@@ -195,7 +215,7 @@ impl DbEngine for MemoryEngine {
 impl DbEngine for SqliteEngine {
     fn new(path: &String) -> Result<Self, &'static str> {
         Ok(SqliteEngine {
-            connection: Connection::open_with_full_mutex(path.as_str()).map_err(Self::report)?,
+            connection: sqlite::Connection::open_with_full_mutex(path.as_str()).map_err(Self::report)?,
         })
     }
     fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
@@ -317,7 +337,7 @@ impl DbEngine for FileEngine {
 
 impl DbEngine for MysqlEngine {
     fn new(path: &String) -> Result<Self, &'static str> {
-        let pool = Pool::new(path.as_str()).map_err(Self::report)?;
+        let pool = mysql::Pool::new(path.as_str()).map_err(Self::report)?;
         Ok(MysqlEngine{
             connection: pool.get_conn().map_err(Self::report)?
         })
@@ -372,6 +392,57 @@ impl DbEngine for MysqlEngine {
     }
 }
 
+impl DbEngine for PostgresqlEngine {
+    fn new(path: &String) -> Result<Self, &'static str> {
+        let manager = PostgresConnectionManager::new(
+            path.parse().unwrap(),
+            NoTls,
+        );
+        Ok(PostgresqlEngine{
+            pool: r2d2::Pool::new(manager).unwrap(),
+        })
+    }
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+        self.client().execute(
+            INSERT_PGSQL_QUERY,
+            &[&id, &msg.get_data(), &(msg.get_max_clicks() as i64), &now(), &(msg.get_lifetime() as i64)]
+        ).map(|_| ()).map_err(Self::report)
+    }
+    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+        self.client().execute(DELETE_BY_ID_PGSQL_QUERY, &[id]).map(|_| ()).map_err(Self::report)
+    }
+    fn get(&mut self, id: &String) -> Result<Record, &'static str> {
+        let result = self.client().query(
+            SELECT_BY_ID_PGSQL_QUERY,
+            &[&id]
+        ).map_err(Self::report)?;
+        assert!(result.len() <= 1);
+        match &result[..] {
+            [first] => {
+                let lifetime: i64 = first.get("lifetime");
+                let clicks: i64 = first.get("max_clicks");
+                Ok(Record{
+                    id: first.get("id"),
+                    data: first.get("data"),
+                    max_clicks: clicks as u32,
+                    created: first.get("created"),
+                    lifetime: lifetime as u64
+                })
+            },
+            _ => Err(NOT_FOUND_ERROR)
+        }
+    }
+    fn update(&mut self, r: Record) -> Result<(), &'static str> {
+        self.client().execute(
+            UPDATE_BY_ID_PGSQL_QUERY,
+            &[&(r.max_clicks as i64), &r.id]
+        ).map(|_| ()).map_err(Self::report)
+    }
+    fn prepare(&mut self) -> Result<(), &'static str> {
+        self.client().batch_execute(PREPARE_DB_PGSQL_QUERY).map_err(Self::report)
+    }
+}
+
 
 impl SqliteEngine {
     fn prepare_statement(&self, query: &str) -> Result<Statement<'_>, &'static str> {
@@ -394,6 +465,11 @@ impl FileEngine {
     }
 }
 
+impl PostgresqlEngine {
+    fn client(&mut self) -> r2d2::PooledConnection<PostgresConnectionManager<NoTls>> {
+        self.pool.get().unwrap()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {
