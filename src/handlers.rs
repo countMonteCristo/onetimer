@@ -2,9 +2,9 @@ use tiny_http::{Request, Response, StatusCode};
 
 use crate::api::ApiAddRequest;
 use crate::context::Context;
-use crate::utils::{generate_hex_id, Result, ResultV};
 use crate::db::NOT_FOUND_ERROR;
 use crate::logger::get_reporter;
+use crate::utils::{generate_hex_id, Result, ResultV};
 
 
 const MODULE: &str = "HANDLERS";

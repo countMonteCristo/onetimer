@@ -1,11 +1,10 @@
-use crate::logger::get_reporter;
-use crate::utils::{generate_hex_id, time_us, Result};
-use crate::config::Config;
-use crate::db::DB;
-
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::api::ApiResponse;
+use crate::config::Config;
+use crate::db::DB;
+use crate::logger::get_reporter;
+use crate::utils::{generate_hex_id, time_us, Result};
 
 
 const MODULE: &str = "CONTEXT";

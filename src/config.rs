@@ -1,5 +1,5 @@
 use config;
-use serde::{Deserializer, Deserialize};
+use serde::Deserialize;
 use simplelog::LevelFilter;
 
 use crate::utils::Result;
@@ -68,7 +68,7 @@ impl Config {
 }
 
 fn deserialize_log_level<'de, D>(deserializer: D) -> std::result::Result<LevelFilter, D::Error>
-where D: Deserializer<'de> {
+where D: serde::Deserializer<'de> {
     use serde::de::Error;
     let buf = String::deserialize(deserializer)?;
     Config::get_log_level(buf).map_err(|e| Error::custom(e))

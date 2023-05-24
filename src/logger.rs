@@ -2,8 +2,8 @@ use std::fs::OpenOptions;
 
 use simplelog::{ColorChoice, LevelFilter, TerminalMode, TermLogger, WriteLogger};
 
-use crate::{config::Config, utils::ErrorStr};
-use crate::utils::ResultV;
+use crate::config::Config;
+use crate::utils::{ErrorStr, ResultV};
 
 
 pub fn init_logger(cfg: &Config) -> ResultV {

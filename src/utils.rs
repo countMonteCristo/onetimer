@@ -2,13 +2,11 @@ use rand::Rng;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 
-const URL_ID_CHARSET: &[u8] = b"0123456789abcdef";
-
 pub type ErrorStr = &'static str;
 pub type Result<T> = std::result::Result<T, ErrorStr>;
 pub type ResultV = Result<()>;
 
-
+const URL_ID_CHARSET: &[u8] = b"0123456789abcdef";
 pub fn generate_hex_id(length: u32) -> String {
     let mut rng = rand::thread_rng();
 

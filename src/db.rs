@@ -2,14 +2,15 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs::OpenOptions;
 
-use r2d2_postgres::{postgres::NoTls, PostgresConnectionManager};
+use mysql::{params, prelude::Queryable};
+use postgres::NoTls;
+use r2d2_postgres::PostgresConnectionManager;
 use serde::{Deserialize, Serialize};
 use sqlite::{ReadableWithIndex, State, Statement, Value};
-use mysql::{params, prelude::Queryable};
 
 use crate::api::ApiAddRequest;
-use crate::utils::{now, Result, ErrorStr, ResultV};
 use crate::logger::get_reporter;
+use crate::utils::{now, ErrorStr, Result, ResultV};
 
 
 const MODULE: &str = "DB";
@@ -92,15 +93,12 @@ impl DB {
             }
         }
     }
-
     pub fn new(typ: &String, path: &String) -> Result<DB> {
         Ok(DB{kind: typ.clone(), engine: Self::new_engine(typ, path)?})
     }
-
     pub fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV {
         self.engine.insert(id, msg)
     }
-
     pub fn select(&mut self, id: &String) -> Result<String> {
         let mut r = self.engine.get(id)?;
         let expired = r.expired();
@@ -116,7 +114,6 @@ impl DB {
         }
         return Ok(data);
     }
-
     pub fn prepare(&mut self) -> ResultV {
         let connected = self.engine.prepare();
         if connected.is_ok() {
@@ -126,7 +123,6 @@ impl DB {
         }
         connected
     }
-
     pub fn get_kind(&self) -> &String { &self.kind }
 }
 
@@ -210,7 +206,6 @@ impl DbEngine for MemoryEngine {
     }
 
 }
-
 impl DbEngine for SqliteEngine {
     fn new(path: &String) -> Result<Self> {
         Ok(SqliteEngine {
@@ -273,7 +268,6 @@ impl DbEngine for SqliteEngine {
         self.connection.execute(PREPARE_DB_SQL_QUERY).map_err(Self::report)
     }
 }
-
 impl DbEngine for FileEngine {
     fn new(path: &String) -> Result<Self> {
         Ok(FileEngine { dir_path: path.clone() })
@@ -333,7 +327,6 @@ impl DbEngine for FileEngine {
         Ok(())
     }
 }
-
 impl DbEngine for MysqlEngine {
     fn new(path: &String) -> Result<Self> {
         let pool = mysql::Pool::new(path.as_str()).map_err(Self::report)?;
@@ -390,7 +383,6 @@ impl DbEngine for MysqlEngine {
         self.connection.query_drop(PREPARE_DB_SQL_QUERY).map_err(Self::report)
     }
 }
-
 impl DbEngine for PostgresqlEngine {
     fn new(path: &String) -> Result<Self> {
         let manager = PostgresConnectionManager::new(
@@ -454,7 +446,6 @@ impl SqliteEngine {
         stmt.next().map(|_| ()).map_err(Self::report)
     }
 }
-
 impl FileEngine {
     fn get_filepath(&self, id: &String) -> String {
         format!("{}/{}", self.dir_path, id)
@@ -463,7 +454,6 @@ impl FileEngine {
         std::path::Path::new(filepath.as_str()).exists()
     }
 }
-
 impl PostgresqlEngine {
     fn client(&mut self) -> Result<r2d2::PooledConnection<PostgresConnectionManager<NoTls>>> {
         self.pool.get().map_err(Self::report)

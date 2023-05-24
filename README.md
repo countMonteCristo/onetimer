@@ -51,9 +51,9 @@ $ curl -d '{"data": "my secret data", "max_clicks": 3, "lifetime": 60}' http://1
 
 where
 * `max_clicks` - number of clicks allowed to get your secret data (by deafult is 1)
-* `lifetime` - maximum time in seconds your secret data will be availiable (has higher priority than `max_clicks`). By default is 1 day
+* `lifetime` - maximum time in seconds your secret data will be availiable (has higher priority than `max_clicks`). By default is 1 week
 
-Here `expired` - `created` will be equal to input `lifetime` parameter, and `expired` is the timestamp after which secret data will be deleted.
+Here `lifetime` == `expired` - `created`, and `expired` is the timestamp after which secret data will be deleted.
 
 ### Get secret data using one-time link:
 ```console

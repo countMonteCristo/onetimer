@@ -1,11 +1,8 @@
+use serde::{Deserialize, Serialize};
 use tiny_http::Request;
 
-use serde::{Deserialize, Serialize};
-
-
-use crate::utils::{one, week_seconds, now, is_zero};
 use crate::logger::get_reporter;
-use crate::utils::Result;
+use crate::utils::{is_zero, now, one, week_seconds, Result};
 
 
 const MODULE: &str = "API";

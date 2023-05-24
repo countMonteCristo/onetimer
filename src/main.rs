@@ -14,9 +14,9 @@ use clap::Parser;
 use tiny_http::{Method, Request, Server};
 
 use crate::db::DB;
-use crate::handlers::{handle_method_add, handle_method_get, respond, HTTP_501};
 use crate::context::Context;
 use crate::config::Config;
+use crate::handlers::{handle_method_add, handle_method_get, respond, HTTP_501};
 use crate::utils::ResultV;
 
 
