@@ -121,9 +121,9 @@ impl DB {
     pub fn prepare(&mut self) -> Result<(), &'static str> {
         let connected = self.engine.prepare();
         if connected.is_ok() {
-            info!("[{}] Connected successfully to {}", MODULE, self.kind);
+            info!("[{}] Connected successfully to `{}` backend", MODULE, self.kind);
         } else {
-            error!("[{}] Connection to {} failed", MODULE, self.kind);
+            error!("[{}] Connection to `{}` backend failed", MODULE, self.kind);
         }
         connected
     }
