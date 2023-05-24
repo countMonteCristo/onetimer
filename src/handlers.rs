@@ -1,10 +1,8 @@
-use std::io;
-
 use tiny_http::{Request, Response, StatusCode};
 
 use crate::api::ApiAddRequest;
 use crate::context::Context;
-use crate::utils::generate_hex_id;
+use crate::utils::{generate_hex_id, Result, ResultV};
 use crate::db::NOT_FOUND_ERROR;
 use crate::logger::get_reporter;
 
@@ -20,10 +18,13 @@ pub const HTTP_500: u16 = 500;
 pub const HTTP_501: u16 = 501;
 
 
-pub fn respond(r: Request, ctx: &mut Context, code: u16) -> io::Result<()> {
-    let data = serde_json::to_string(&ctx.resp)?;
+pub fn respond(r: Request, ctx: &mut Context, code: u16) -> ResultV {
+    if code != HTTP_200 {
+        ctx.resp.hide_sensitive();
+    }
+    let data = serde_json::to_string(&ctx.resp).map_err(get_reporter(MODULE, "Respond", "serde error"))?;
     let response = Response::from_string(&data).with_status_code(StatusCode(code));
-    let result = r.respond(response);
+    let result = r.respond(response).map_err(get_reporter(MODULE, "Respond", "respond error"));
 
     ctx.fix();
     info!("Respond to [qid={}]: time: {}ms; status: {}; sent: {} bytes", ctx.qid, ctx.time_ms(), code, data.as_bytes().len());
@@ -31,7 +32,7 @@ pub fn respond(r: Request, ctx: &mut Context, code: u16) -> io::Result<()> {
     result
 }
 
-pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
+pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> ResultV {
     let parsed = ApiAddRequest::parse_from(&mut r);
     let mut code = HTTP_400;
 
@@ -56,22 +57,22 @@ pub fn handle_method_add(mut r: Request, ctx: &mut Context) -> io::Result<()> {
     respond(r, ctx, code)
 }
 
-fn create_url_for_msg(msg: &ApiAddRequest, ctx: &mut Context) -> Result<String, &'static str> {
+fn create_url_for_msg(msg: &ApiAddRequest, ctx: &mut Context) -> Result<String> {
     let id = generate_hex_id(URL_ID_LENGTH);
 
-    ctx.db().insert(&id, msg).map_err(
-        get_reporter(MODULE, "Server", "erver error")
+    ctx.db()?.insert(&id, msg).map_err(
+        get_reporter(MODULE, "Server", "server error")
     )?;
 
     let url = format!("{}/get/{}", ctx.cfg.server.address, id);
     Ok(url)
 }
 
-pub fn handle_method_get(r: Request, ctx: &mut Context) -> io::Result<()>  {
+pub fn handle_method_get(r: Request, ctx: &mut Context) -> ResultV  {
     let parts: Vec<&str> = r.url().split("/").collect();
     let id = parts[2];
 
-    let res = ctx.db().select(&id.to_string());
+    let res = ctx.db()?.select(&id.to_string());
     let code =  match res {
         Ok(message) => {
             ctx.resp.set_message(message);
@@ -80,9 +81,12 @@ pub fn handle_method_get(r: Request, ctx: &mut Context) -> io::Result<()>  {
         Err(e) => {
             if e != NOT_FOUND_ERROR {
                 error!("[{}] Error while doing select: {}", MODULE, e);
+                ctx.resp.set_status("server error".to_string());
+                HTTP_500
+            } else {
+                ctx.resp.set_status("Link was not found or has been deleted".to_string());
+                HTTP_404
             }
-            ctx.resp.set_status("Link was not found or has been deleted".to_string());
-            HTTP_404
         }
     };
 

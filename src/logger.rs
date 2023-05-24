@@ -1,11 +1,12 @@
-use crate::config::Config;
-
 use std::fs::OpenOptions;
 
 use simplelog::{ColorChoice, LevelFilter, TerminalMode, TermLogger, WriteLogger};
 
+use crate::{config::Config, utils::ErrorStr};
+use crate::utils::ResultV;
 
-pub fn init_logger(cfg: &Config) -> Result<(), &'static str> {
+
+pub fn init_logger(cfg: &Config) -> ResultV {
     match cfg.log.kind.as_str() {
         "console" => init_term_logger(cfg.log.level),
         "file"    => init_file_logger(cfg.log.level, &cfg.log.file),
@@ -19,7 +20,7 @@ pub fn init_logger(cfg: &Config) -> Result<(), &'static str> {
     }
 }
 
-pub fn get_reporter<E: std::fmt::Display>(module: &'static str, item: &'static str, msg: &'static str) -> impl Fn(E) -> &'static str {
+pub fn get_reporter<E: std::fmt::Display>(module: &'static str, item: &'static str, msg: ErrorStr) -> impl Fn(E) -> ErrorStr {
     move |e: E| {
         error!("[{}] {} error: {}", module, item, e);
         msg
@@ -35,7 +36,7 @@ fn prepare_logger_config() -> simplelog::Config {
     ).set_time_offset_to_local().unwrap().build()
 }
 
-fn init_term_logger(level: LevelFilter) -> Result<(), &'static str> {
+fn init_term_logger(level: LevelFilter) -> ResultV {
     TermLogger::init(
         level,
         prepare_logger_config(),
@@ -43,7 +44,7 @@ fn init_term_logger(level: LevelFilter) -> Result<(), &'static str> {
     ).map_err(|_| "init logger error")
 }
 
-fn init_file_logger(level: LevelFilter, filename: &String) -> Result<(), &'static str> {
+fn init_file_logger(level: LevelFilter, filename: &String) -> ResultV {
     WriteLogger::init(
         level,
         prepare_logger_config(),

@@ -8,7 +8,7 @@ use sqlite::{ReadableWithIndex, State, Statement, Value};
 use mysql::{params, prelude::Queryable};
 
 use crate::api::ApiAddRequest;
-use crate::utils::now;
+use crate::utils::{now, Result, ErrorStr, ResultV};
 use crate::logger::get_reporter;
 
 
@@ -20,13 +20,12 @@ const DB_FILE: &str = "file";
 const DB_MYSQL: &str = "mysql";
 const DB_PGSQL: &str = "postgresql";
 
-const PREPARE_DB_SQL_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks INT NOT NULL, created INT NOT NULL, lifetime INT NOT NULL);";
+const PREPARE_DB_SQL_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks BIGINT NOT NULL, created BIGINT NOT NULL, lifetime BIGINT NOT NULL);";
 const SELECT_BY_ID_SQL_QUERY: &str = "SELECT * FROM msg WHERE id = :id LIMIT 1";
 const DELETE_BY_ID_SQL_QUERY: &str = "DELETE FROM msg WHERE id = :id";
 const UPDATE_BY_ID_SQL_QUERY: &str = "UPDATE msg SET max_clicks = :max_clicks WHERE id = :id";
 const INSERT_SQL_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, created, lifetime) VALUES (:id, :data, :max_clicks, :created, :lifetime)";
 
-const PREPARE_DB_PGSQL_QUERY: &str = "CREATE TABLE IF NOT EXISTS msg (id TEXT NOT NULL, data TEXT, max_clicks BIGINT NOT NULL, created BIGINT NOT NULL, lifetime BIGINT NOT NULL);";
 const DELETE_BY_ID_PGSQL_QUERY: &str = "DELETE FROM msg WHERE id = $1";
 const INSERT_PGSQL_QUERY: &str = "INSERT INTO msg (id, data, max_clicks, created, lifetime) VALUES ($1, $2, $3, $4, $5)";
 const SELECT_BY_ID_PGSQL_QUERY: &str = "SELECT * FROM msg WHERE id = $1 LIMIT 1";
@@ -47,31 +46,31 @@ pub const DELETE_ERROR: &str = "delete error";
 
 pub trait DbEngine: Sync + Send {
     /// Insert data from ApiAddRequest with given id to database
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str>;
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV;
 
     /// Get record from database by id
-    fn get(&mut self, id: &String) -> Result<Record, &'static str>;
+    fn get(&mut self, id: &String) -> Result<Record>;
 
     /// Delete record from database by id
-    fn delete(&mut self, id: &String)-> Result<(), &'static str>;
+    fn delete(&mut self, id: &String)-> ResultV;
 
     /// Update record in database
-    fn update(&mut self, r: Record)-> Result<(), &'static str>;
+    fn update(&mut self, r: Record)-> ResultV;
 
     /// Create new instance of engine
-    fn new(path: &String) -> Result<Self, &'static str> where Self: Sized;
+    fn new(path: &String) -> Result<Self> where Self: Sized;
 
     /// Create new instance of engine in the heap
-    fn new_boxed(path: &String) -> Result<Box<Self>, &'static str> where Self: Sized {
+    fn new_boxed(path: &String) -> Result<Box<Self>> where Self: Sized {
         Self::new(path).map(|e| Box::new(e))
     }
 
     /// Prepare engine (create tables if needed)
-    fn prepare(&mut self) -> Result<(), &'static str>;
+    fn prepare(&mut self) -> ResultV;
 }
 
 trait Reportable {
-    fn report(e: impl Display) -> &'static str;
+    fn report(e: impl Display) -> ErrorStr;
 }
 
 pub struct DB {
@@ -80,7 +79,7 @@ pub struct DB {
 }
 
 impl DB {
-    fn new_engine(kind: &String, path: &String) -> Result<Box<dyn DbEngine>, &'static str> {
+    fn new_engine(kind: &String, path: &String) -> Result<Box<dyn DbEngine>> {
         match kind.as_str() {
             DB_SQLITE => Ok(SqliteEngine::new_boxed(path)?),
             DB_MEMORY => Ok(MemoryEngine::new_boxed(path)?),
@@ -94,15 +93,15 @@ impl DB {
         }
     }
 
-    pub fn new(typ: &String, path: &String) -> Result<DB, &'static str> {
+    pub fn new(typ: &String, path: &String) -> Result<DB> {
         Ok(DB{kind: typ.clone(), engine: Self::new_engine(typ, path)?})
     }
 
-    pub fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+    pub fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV {
         self.engine.insert(id, msg)
     }
 
-    pub fn select(&mut self, id: &String) -> Result<String, &'static str> {
+    pub fn select(&mut self, id: &String) -> Result<String> {
         let mut r = self.engine.get(id)?;
         let expired = r.expired();
         let data = r.data.clone();
@@ -118,7 +117,7 @@ impl DB {
         return Ok(data);
     }
 
-    pub fn prepare(&mut self) -> Result<(), &'static str> {
+    pub fn prepare(&mut self) -> ResultV {
         let connected = self.engine.prepare();
         if connected.is_ok() {
             info!("[{}] Connected successfully to `{}` backend", MODULE, self.kind);
@@ -150,37 +149,37 @@ struct PostgresqlEngine {
 
 
 impl Reportable for SqliteEngine {
-    fn report(e: impl Display) -> &'static str {
+    fn report(e: impl Display) -> ErrorStr {
         get_reporter(MODULE, "SQLite", SQLITE_ERROR)(e)
     }
 }
 impl Reportable for MemoryEngine {
-    fn report(e: impl Display) -> &'static str {
+    fn report(e: impl Display) -> ErrorStr {
         get_reporter(MODULE, "Memory", MEMORY_ERROR)(e)
     }
 }
 impl Reportable for FileEngine {
-    fn report(e: impl Display) -> &'static str {
+    fn report(e: impl Display) -> ErrorStr {
         get_reporter(MODULE, "IO", IO_ERROR)(e)
     }
 }
 impl Reportable for MysqlEngine {
-    fn report(e: impl Display) -> &'static str {
+    fn report(e: impl Display) -> ErrorStr {
         get_reporter(MODULE, "MySQL", MYSQL_ERROR)(e)
     }
 }
 impl Reportable for PostgresqlEngine {
-    fn report(e: impl Display) -> &'static str {
+    fn report(e: impl Display) -> ErrorStr {
         get_reporter(MODULE, "PostgreSQL", PGSQL_ERROR)(e)
     }
 }
 
 
 impl DbEngine for MemoryEngine {
-    fn new(_path: &String) -> Result<Self, &'static str> {
+    fn new(_path: &String) -> Result<Self> {
         Ok(MemoryEngine { map: HashMap::new() })
     }
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV {
         match self.map.insert(id.clone(), Record::new(id, msg)) {
             None => Ok(()),
             Some(_) => {
@@ -189,16 +188,16 @@ impl DbEngine for MemoryEngine {
             }
         }
     }
-    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+    fn delete(&mut self, id: &String) -> ResultV {
         self.map.remove(id).map(|_| ()).ok_or(DELETE_ERROR).map_err(Self::report)
     }
-    fn get(&mut self, id: &String) -> Result<Record, &'static str> {
+    fn get(&mut self, id: &String) -> Result<Record> {
         match self.map.get(id) {
             Some(v) => Ok(v.clone()),
             None => Err(NOT_FOUND_ERROR)
         }
     }
-    fn update(&mut self, r: Record) -> Result<(), &'static str> {
+    fn update(&mut self, r: Record) -> ResultV {
         let id = r.id.clone();
         if !self.map.contains_key(&id) {
             return Err(NOT_FOUND_ERROR);
@@ -206,19 +205,19 @@ impl DbEngine for MemoryEngine {
         self.map.entry(id).and_modify(|rec| rec.max_clicks = r.max_clicks );
         Ok(())
     }
-    fn prepare(&mut self) -> Result<(), &'static str> {
+    fn prepare(&mut self) -> ResultV {
         Ok(())
     }
 
 }
 
 impl DbEngine for SqliteEngine {
-    fn new(path: &String) -> Result<Self, &'static str> {
+    fn new(path: &String) -> Result<Self> {
         Ok(SqliteEngine {
             connection: sqlite::Connection::open_with_full_mutex(path.as_str()).map_err(Self::report)?,
         })
     }
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV {
         let mut stmt = self.prepare_statement(INSERT_SQL_QUERY)?;
 
         stmt.bind::<&[(_, Value)]>(&[
@@ -231,7 +230,7 @@ impl DbEngine for SqliteEngine {
 
         self.check_ok(&mut stmt)
     }
-    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+    fn delete(&mut self, id: &String) -> ResultV {
         let mut del_stmt = self.prepare_statement(DELETE_BY_ID_SQL_QUERY)?;
 
         del_stmt.bind::<&[(_, Value)]>(&[
@@ -240,7 +239,7 @@ impl DbEngine for SqliteEngine {
 
         self.check_ok(&mut del_stmt)
     }
-    fn get(&mut self, id: &String) -> Result<Record, &'static str> {
+    fn get(&mut self, id: &String) -> Result<Record> {
         let mut stmt = self.prepare_statement(SELECT_BY_ID_SQL_QUERY)?;
 
         stmt.bind::<&[(_, Value)]>(&[
@@ -260,7 +259,7 @@ impl DbEngine for SqliteEngine {
         }
         Err(NOT_FOUND_ERROR)
     }
-    fn update(&mut self, r: Record) -> Result<(), &'static str> {
+    fn update(&mut self, r: Record) -> ResultV {
         let mut upd_stmt = self.prepare_statement(UPDATE_BY_ID_SQL_QUERY)?;
 
         upd_stmt.bind::<&[(_, Value)]>(&[
@@ -270,16 +269,16 @@ impl DbEngine for SqliteEngine {
 
         self.check_ok(&mut upd_stmt)
     }
-    fn prepare(&mut self) -> Result<(), &'static str> {
+    fn prepare(&mut self) -> ResultV {
         self.connection.execute(PREPARE_DB_SQL_QUERY).map_err(Self::report)
     }
 }
 
 impl DbEngine for FileEngine {
-    fn new(path: &String) -> Result<Self, &'static str> {
+    fn new(path: &String) -> Result<Self> {
         Ok(FileEngine { dir_path: path.clone() })
     }
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV {
         let filepath = self.get_filepath(id);
         if self.file_exists(&filepath) {
             // TODO: add logging here
@@ -291,7 +290,7 @@ impl DbEngine for FileEngine {
             &Record::new(id, msg)
         ).map_err(Self::report)
     }
-    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+    fn delete(&mut self, id: &String) -> ResultV {
         let filepath = self.get_filepath(id);
         if !self.file_exists(&filepath) {
             // TODO: add logging here
@@ -300,7 +299,7 @@ impl DbEngine for FileEngine {
 
         std::fs::remove_file(filepath).map_err(Self::report)
     }
-    fn get(&mut self, id: &String) -> Result<Record, &'static str> {
+    fn get(&mut self, id: &String) -> Result<Record> {
         let filepath = self.get_filepath(id);
         if !self.file_exists(&filepath) {
             return Err(NOT_FOUND_ERROR);
@@ -310,7 +309,7 @@ impl DbEngine for FileEngine {
             OpenOptions::new().read(true).open(filepath).map_err(Self::report)?
         ).map_err(Self::report)
     }
-    fn update(&mut self, r: Record)-> Result<(), &'static str> {
+    fn update(&mut self, r: Record)-> ResultV {
         let filepath = self.get_filepath(&r.id);
         if !self.file_exists(&filepath) {
             return Err(NOT_FOUND_ERROR);
@@ -327,7 +326,7 @@ impl DbEngine for FileEngine {
             &record
         ).map_err(Self::report)
     }
-    fn prepare(&mut self) -> Result<(), &'static str> {
+    fn prepare(&mut self) -> ResultV {
         if !self.file_exists(&self.dir_path) {
             std::fs::create_dir(self.dir_path.clone()).map_err(Self::report)?;
         }
@@ -336,13 +335,13 @@ impl DbEngine for FileEngine {
 }
 
 impl DbEngine for MysqlEngine {
-    fn new(path: &String) -> Result<Self, &'static str> {
+    fn new(path: &String) -> Result<Self> {
         let pool = mysql::Pool::new(path.as_str()).map_err(Self::report)?;
         Ok(MysqlEngine{
             connection: pool.get_conn().map_err(Self::report)?
         })
     }
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV {
         self.connection.exec_drop(
             INSERT_SQL_QUERY,
             params!{
@@ -354,7 +353,7 @@ impl DbEngine for MysqlEngine {
             },
         ).map_err(Self::report)
     }
-    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
+    fn delete(&mut self, id: &String) -> ResultV {
         self.connection.exec_drop(
             DELETE_BY_ID_SQL_QUERY,
             params!{
@@ -362,7 +361,7 @@ impl DbEngine for MysqlEngine {
             }
         ).map_err(Self::report)
     }
-    fn get(&mut self, id: &String) -> Result<Record, &'static str> {
+    fn get(&mut self, id: &String) -> Result<Record> {
         let result = self.connection.exec_map(
             SELECT_BY_ID_SQL_QUERY,
             params!{
@@ -378,7 +377,7 @@ impl DbEngine for MysqlEngine {
             _ => Err(NOT_FOUND_ERROR)
         }
     }
-    fn update(&mut self, r: Record) -> Result<(), &'static str> {
+    fn update(&mut self, r: Record) -> ResultV {
         self.connection.exec_drop(
             UPDATE_BY_ID_SQL_QUERY,
             params!{
@@ -387,32 +386,32 @@ impl DbEngine for MysqlEngine {
             },
         ).map_err(Self::report)
     }
-    fn prepare(&mut self) -> Result<(), &'static str> {
+    fn prepare(&mut self) -> ResultV {
         self.connection.query_drop(PREPARE_DB_SQL_QUERY).map_err(Self::report)
     }
 }
 
 impl DbEngine for PostgresqlEngine {
-    fn new(path: &String) -> Result<Self, &'static str> {
+    fn new(path: &String) -> Result<Self> {
         let manager = PostgresConnectionManager::new(
-            path.parse().unwrap(),
+            path.parse().map_err(Self::report)?,
             NoTls,
         );
         Ok(PostgresqlEngine{
-            pool: r2d2::Pool::new(manager).unwrap(),
+            pool: r2d2::Pool::new(manager).map_err(Self::report)?,
         })
     }
-    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> Result<(), &'static str> {
-        self.client().execute(
+    fn insert(&mut self, id: &String, msg: &ApiAddRequest) -> ResultV {
+        self.client()?.execute(
             INSERT_PGSQL_QUERY,
             &[&id, &msg.get_data(), &(msg.get_max_clicks() as i64), &now(), &(msg.get_lifetime() as i64)]
         ).map(|_| ()).map_err(Self::report)
     }
-    fn delete(&mut self, id: &String) -> Result<(), &'static str> {
-        self.client().execute(DELETE_BY_ID_PGSQL_QUERY, &[id]).map(|_| ()).map_err(Self::report)
+    fn delete(&mut self, id: &String) -> ResultV {
+        self.client()?.execute(DELETE_BY_ID_PGSQL_QUERY, &[id]).map(|_| ()).map_err(Self::report)
     }
-    fn get(&mut self, id: &String) -> Result<Record, &'static str> {
-        let result = self.client().query(
+    fn get(&mut self, id: &String) -> Result<Record> {
+        let result = self.client()?.query(
             SELECT_BY_ID_PGSQL_QUERY,
             &[&id]
         ).map_err(Self::report)?;
@@ -432,26 +431,26 @@ impl DbEngine for PostgresqlEngine {
             _ => Err(NOT_FOUND_ERROR)
         }
     }
-    fn update(&mut self, r: Record) -> Result<(), &'static str> {
-        self.client().execute(
+    fn update(&mut self, r: Record) -> ResultV {
+        self.client()?.execute(
             UPDATE_BY_ID_PGSQL_QUERY,
             &[&(r.max_clicks as i64), &r.id]
         ).map(|_| ()).map_err(Self::report)
     }
-    fn prepare(&mut self) -> Result<(), &'static str> {
-        self.client().batch_execute(PREPARE_DB_PGSQL_QUERY).map_err(Self::report)
+    fn prepare(&mut self) -> ResultV {
+        self.client()?.batch_execute(PREPARE_DB_SQL_QUERY).map_err(Self::report)
     }
 }
 
 
 impl SqliteEngine {
-    fn prepare_statement(&self, query: &str) -> Result<Statement<'_>, &'static str> {
+    fn prepare_statement(&self, query: &str) -> Result<Statement<'_>> {
         self.connection.prepare(query).map_err(Self::report)
     }
-    fn read_column<T: ReadableWithIndex>(&self, stmt: &Statement, column: &str) -> Result<T, &'static str> {
+    fn read_column<T: ReadableWithIndex>(&self, stmt: &Statement, column: &str) -> Result<T> {
         stmt.read::<T, _>(column).map_err(Self::report)
     }
-    fn check_ok(&self, stmt: &mut Statement) -> Result<(), &'static str> {
+    fn check_ok(&self, stmt: &mut Statement) -> ResultV {
         stmt.next().map(|_| ()).map_err(Self::report)
     }
 }
@@ -466,10 +465,11 @@ impl FileEngine {
 }
 
 impl PostgresqlEngine {
-    fn client(&mut self) -> r2d2::PooledConnection<PostgresConnectionManager<NoTls>> {
-        self.pool.get().unwrap()
+    fn client(&mut self) -> Result<r2d2::PooledConnection<PostgresConnectionManager<NoTls>>> {
+        self.pool.get().map_err(Self::report)
     }
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {

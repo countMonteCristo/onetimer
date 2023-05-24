@@ -8,7 +8,6 @@ pub mod handlers;
 pub mod logger;
 pub mod utils;
 
-use std::io;
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
@@ -18,7 +17,10 @@ use crate::db::DB;
 use crate::handlers::{handle_method_add, handle_method_get, respond, HTTP_501};
 use crate::context::Context;
 use crate::config::Config;
+use crate::utils::ResultV;
 
+
+const MODULE: &str = "MAIN";
 
 /// Simple service for generating one-time access link to your secret data
 #[derive(Parser, Debug)]
@@ -28,7 +30,7 @@ struct Args {
     config_fn: String,
 }
 
-fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
+fn handle_request(r: Request, mut ctx: Context) -> ResultV {
     let headers: String = r.headers().iter().map(|h| -> String {
         h.to_string()
     }).collect::<Vec<String>>().join("\\r\\n");
@@ -49,26 +51,26 @@ fn handle_request(r: Request, mut ctx: Context) -> io::Result<()> {
 }
 
 
-fn main() -> Result<(), &'static str> {
+fn main() -> ResultV {
     let args = Args::parse();
     let cfg = Config::load(&args.config_fn);
     logger::init_logger(&cfg)?;
 
-    let reporter = logger::get_reporter("MAIN", "Main", "");
+    let reporter = logger::get_reporter(MODULE, "Main", "");
 
     let mut db = DB::new(&cfg.database.kind, &cfg.database.url).map_err(&reporter)?;
-    info!("[MAIN] Use `{}` as database backend", db.get_kind());
+    info!("[{}] Use `{}` as database backend", MODULE, db.get_kind());
 
     db.prepare().map_err(&reporter)?;
 
     let addr = format!("{}:{}", cfg.server.host, cfg.server.port);
     let server = Server::http(&addr).map_err(|e| {
-        error!("[MAIN] Could not start server at {}: {}", addr, e);
+        error!("[{}] Could not start server at {}: {}", MODULE, addr, e);
         "init server error"
     })?;
 
-    info!("[MAIN] Staring onetimer service at {}", addr);
-    info!("[MAIN] Config loaded from {}", args.config_fn);
+    info!("[{}] Staring onetimer service at {}", MODULE, addr);
+    info!("[{}] Config loaded from {}", MODULE, args.config_fn);
 
     let pool = threadpool::ThreadPool::new(cfg.server.workers);
 

@@ -1,4 +1,5 @@
-use crate::utils::{generate_hex_id, time_us};
+use crate::logger::get_reporter;
+use crate::utils::{generate_hex_id, time_us, Result};
 use crate::config::Config;
 use crate::db::DB;
 
@@ -6,6 +7,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::api::ApiResponse;
 
+
+const MODULE: &str = "CONTEXT";
 
 pub struct Context {
     pub qid: String,
@@ -36,7 +39,7 @@ impl Context {
         ((self.finish_time_us - self.start_time_us) as f32)/1000.0
     }
 
-    pub fn db(&mut self) -> MutexGuard<DB> {
-        self.db.lock().unwrap()
+    pub fn db(&mut self) -> Result<MutexGuard<DB>> {
+        self.db.lock().map_err(get_reporter(MODULE, "Context", "context error"))
     }
 }

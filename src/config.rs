@@ -2,6 +2,9 @@ use config;
 use serde::{Deserializer, Deserialize};
 use simplelog::LevelFilter;
 
+use crate::utils::Result;
+
+
 #[derive(serde_derive::Deserialize)]
 pub struct Database {
     pub kind: String,
@@ -48,7 +51,7 @@ impl Config {
             .try_deserialize().unwrap()
     }
 
-    fn get_log_level(level_str: String) -> Result<LevelFilter, &'static str> {
+    fn get_log_level(level_str: String) -> Result<LevelFilter> {
         match level_str.to_lowercase().as_str() {
             "debug" => Ok(LevelFilter::Debug),
             "error" => Ok(LevelFilter::Error),
@@ -64,7 +67,7 @@ impl Config {
     }
 }
 
-fn deserialize_log_level<'de, D>(deserializer: D) -> Result<LevelFilter, D::Error>
+fn deserialize_log_level<'de, D>(deserializer: D) -> std::result::Result<LevelFilter, D::Error>
 where D: Deserializer<'de> {
     use serde::de::Error;
     let buf = String::deserialize(deserializer)?;

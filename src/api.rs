@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::utils::{one, week_seconds, now, is_zero};
 use crate::logger::get_reporter;
+use crate::utils::Result;
 
 
 const MODULE: &str = "API";
@@ -26,7 +27,7 @@ impl ApiAddRequest {
     pub fn get_max_clicks(&self) -> u32 { if self.max_clicks <= 0 {one().into()} else {self.max_clicks} }
     pub fn get_lifetime(&self) -> u64 { if self.lifetime <= 0 {week_seconds()} else {self.lifetime} }
 
-    pub fn parse_from(r: &mut Request) -> Result<ApiAddRequest, &'static str> {
+    pub fn parse_from(r: &mut Request) -> Result<ApiAddRequest> {
         serde_json::from_reader(r.as_reader()).map_err(
             get_reporter(MODULE, "ApiAddRequest::parse_from", "parse error")
         )
